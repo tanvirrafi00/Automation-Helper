@@ -354,6 +354,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         document.getElementById('startRecBtn').addEventListener('click', startRecording);
         document.getElementById('stopRecBtn').addEventListener('click', stopRecording);
         document.getElementById('clearStepsBtn').addEventListener('click', clearSteps);
+        document.getElementById('generateCodeBtn')?.addEventListener('click', saveGeneratedCode);
 
         // Export buttons
         document.getElementById('downloadZipBtn')?.addEventListener('click', async () => {
@@ -498,15 +499,61 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
         document.getElementById('startRecBtn').disabled = false;
         document.getElementById('stopRecBtn').disabled = true;
-        document.getElementById('recordingStatus').textContent = 'Idle';
-        document.getElementById('recordingStatus').style.color = '#6b7280';
+        document.getElementById('recordingStatus').textContent = 'Stopped';
+        document.getElementById('recordingStatus').style.color = '#10b981';
 
         // Send message to content script to stop recording
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             chrome.tabs.sendMessage(tabs[0].id, { type: 'STOP_RECORDING' });
         });
 
-        generateCode();
+        // Show generate code button if steps exist
+        if (recordedSteps.length > 0) {
+            const generateBtn = document.getElementById('generateCodeBtn');
+            if (generateBtn) {
+                generateBtn.style.display = 'inline-flex';
+            }
+        }
+    }
+
+    async function saveGeneratedCode() {
+        if (!currentProject || recordedSteps.length === 0) {
+            alert('No steps to save');
+            return;
+        }
+
+        const pageName = document.getElementById('recorderPageSelect').value;
+        const testName = document.getElementById('recorderTestSelect').value;
+        const testCaseName = document.getElementById('recorderTestCase').value;
+
+        if (!pageName || !testName || !testCaseName) {
+            alert('Please ensure page object and test spec are selected');
+            return;
+        }
+
+        // Add recorded steps to the test case
+        const testSpec = currentProject.tests[testName];
+        const existingCase = testSpec.testCases.find(tc => tc.name === testCaseName);
+
+        if (existingCase) {
+            existingCase.steps = recordedSteps;
+        } else {
+            testSpec.addTestCase(testCaseName, recordedSteps);
+        }
+
+        // Update the test spec in project
+        await projectManager.updateTestSpec(currentProject.id, testName, testSpec);
+
+        // Reload current project
+        await loadCurrentProject();
+
+        alert('Code saved successfully! Go to Export tab to download your project.');
+
+        // Hide generate button
+        const generateBtn = document.getElementById('generateCodeBtn');
+        if (generateBtn) {
+            generateBtn.style.display = 'none';
+        }
     }
 
     function clearSteps() {
@@ -565,10 +612,38 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     });
 
     function addStepToList(step) {
-        const list = document.getElementById('stepsList');
+        const stepsList = document.getElementById('stepsList');
         const li = document.createElement('li');
-        li.textContent = `${step.action} on ${step.selector}${step.value ? ` with "${step.value}"` : ''}`;
-        list.appendChild(li);
+        li.className = 'step-item';
+
+        // Add icon based on action
+        const icon = step.action === 'click' ? '🖱️' :
+            step.action === 'fill' ? '⌨️' :
+                step.action === 'select' ? '📋' : '▶️';
+
+        // Format step text
+        let stepText = `${icon} ${step.action.toUpperCase()}`;
+        if (step.elementName) {
+            stepText += ` → ${step.elementName}`;
+        }
+        if (step.value) {
+            stepText += ` = "${step.value}"`;
+        }
+
+        li.innerHTML = `
+            <div class="step-content">
+                <span class="step-text">${stepText}</span>
+                <span class="step-selector">${step.selector}</span>
+            </div>
+        `;
+
+        stepsList.appendChild(li);
+
+        // Auto-scroll to bottom
+        stepsList.scrollTop = stepsList.scrollHeight;
+
+        // Generate code preview
+        generateCode();
     }
 
     // Modal helpers
