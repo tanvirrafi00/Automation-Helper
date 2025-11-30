@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automation Framework Manager</title>
+  <link rel="stylesheet" href="../../assets/css/popup.css">
+</head>
+
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>🚀 Automation Framework Manager</h1>
+      <div class="header-controls">
+        <button id="themeToggle" class="btn-icon" title="Toggle Dark Mode">🌙</button>
+      </div>
+      <div class="project-selector">
+        <select id="projectSelect">
+          <option value="">No Project Selected</option>
+        </select>
+        <button id="newProjectBtn" class="btn btn-primary">+ New Project</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="content">
+      <!-- Tab Navigation -->
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="pageObjects">Page Objects</button>
+        <button class="tab-btn" data-tab="tests">Tests</button>
+        <button class="tab-btn" data-tab="recorder">Recorder</button>
+        <button class="tab-btn" data-tab="export">Export</button>
+      </nav>
+
+      <!-- Dashboard Tab -->
+      <div class="tab-content active" id="dashboard">
+        <div class="dashboard">
+          <div class="stat-card">
+            <h3>Page Objects</h3>
+            <p class="stat-number" id="pageObjectCount">0</p>
+          </div>
+          <div class="stat-card">
+            <h3>Test Specs</h3>
+            <p class="stat-number" id="testSpecCount">0</p>
+          </div>
+          <div class="stat-card">
+            <h3>Test Cases</h3>
+            <p class="stat-number" id="testCaseCount">0</p>
+          </div>
+        </div>
+
+        <div class="project-info" id="projectInfo">
+          <h3>Project Information</h3>
+          <p><strong>Tool:</strong> <span id="projectTool">-</span></p>
+          <p><strong>Language:</strong> <span id="projectLanguage">-</span></p>
+          <p><strong>Created:</strong> <span id="projectCreated">-</span></p>
+          <p><strong>Last Updated:</strong> <span id="projectUpdated">-</span></p>
+        </div>
+
+        <div class="quick-actions">
+          <button class="btn btn-secondary" id="createPageObjectBtn">Create Page Object</button>
+          <button class="btn btn-secondary" id="createTestBtn">Create Test</button>
+          <button class="btn btn-secondary" id="startRecordingBtn">Start Recording</button>
+        </div>
+      </div>
+
+      <!-- Page Objects Tab -->
+      <div class="tab-content" id="pageObjects">
+        <div class="tab-header">
+          <h2>Page Objects</h2>
+          <input type="text" id="pageSearch" placeholder="Search pages..." class="search-input">
+          <button class="btn btn-primary" id="addPageObjectBtn">+ Add Page Object</button>
+        </div>
+        <div class="page-objects-list" id="pageObjectsList">
+          <p class="empty-state">No page objects yet. Create one to get started!</p>
+        </div>
+      </div>
+
+      <!-- Tests Tab -->
+      <div class="tab-content" id="tests">
+        <div class="tab-header">
+          <h2>Test Specifications</h2>
+          <input type="text" id="testSearch" placeholder="Search tests..." class="search-input">
+          <button class="btn btn-primary" id="addTestBtn">+ Add Test</button>
+        </div>
+        <div class="tests-list" id="testsList">
+          <p class="empty-state">No tests yet. Create one to get started!</p>
+        </div>
+      </div>
+
+      <!-- Recorder Tab -->
+      <div class="tab-content" id="recorder">
+        <div class="recorder-controls">
+          <h2>Step Recorder</h2>
+          <div class="recorder-settings">
+            <label>
+              Page Object:
+              <select id="recorderPageSelect">
+                <option value="">Select Page Object</option>
+              </select>
+            </label>
+            <label>
+              Test Spec:
+              <select id="recorderTestSelect">
+                <option value="">Select Test Spec</option>
+              </select>
+            </label>
+            <label>
+              Test Case:
+              <input type="text" id="recorderTestCase" placeholder="Test case name">
+            </label>
+            <div class="recorder-options">
+              <label>
+                Annotation:
+                <input type="text" id="stepAnnotation" placeholder="@smoke, @critical">
+              </label>
+              <label>
+                Assertion:
+                <select id="stepAssertion">
+                  <option value="">None</option>
+                  <option value="toBeVisible">Visible</option>
+                  <option value="toHaveText">Have Text</option>
+                  <option value="toBeEnabled">Enabled</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="recorder-buttons">
+            <button class="btn btn-success" id="startRecBtn">⏺ Start Recording</button>
+            <button class="btn btn-danger" id="stopRecBtn" disabled>⏹ Stop Recording</button>
+            <button class="btn btn-info" id="replayBtn">▶ Replay</button>
+            <button class="btn btn-warning" id="screenshotBtn">📷 Screenshot</button>
+            <button class="btn btn-secondary" id="clearStepsBtn">🗑 Clear Steps</button>
+          </div>
+          <div class="recording-status">
+            Status: <span id="recordingStatus">Idle</span>
+          </div>
+        </div>
+        <div class="recorded-steps" id="recordedSteps">
+          <h3>Recorded Steps</h3>
+          <ul id="stepsList"></ul>
+        </div>
+        <div class="generated-code">
+          <h3>Generated Code</h3>
+          <pre id="generatedCode">// Code will appear here...</pre>
+          <button class="btn btn-secondary" id="copyCodeBtn">📋 Copy Code</button>
+        </div>
+      </div>
+
+      <!-- Export Tab -->
+      <div class="tab-content" id="export">
+        <h2>Export Project</h2>
+        <div class="export-options">
+          <div class="export-preview" id="exportPreview">
+            <h3>Project Structure</h3>
+            <pre id="projectStructure">Select a project to see structure...</pre>
+          </div>
+          <div class="export-actions">
+            <button class="btn btn-primary" id="downloadProjectBtn">⬇ Download Project</button>
+            <button class="btn btn-secondary" id="copyAllCodeBtn">📋 Copy All Code</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+
+  <!-- New Project Modal -->
+  <div class="modal" id="newProjectModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Create New Project</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label>
+          Project Name:
+          <input type="text" id="projectName" placeholder="My Automation Project">
+        </label>
+        <label>
+          Tool:
+          <select id="projectTool">
+            <option value="playwright">Playwright</option>
+            <option value="selenium">Selenium</option>
+            <option value="webdriverio">WebdriverIO</option>
+          </select>
+        </label>
+        <label>
+          Language:
+          <select id="projectLanguage">
+            <option value="typescript">TypeScript</option>
+            <option value="javascript">JavaScript</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+          </select>
+        </label>
+        <label>
+          Template:
+          <select id="projectTemplate">
+            <option value="default">Default</option>
+            <option value="web-form">Web Form</option>
+            <option value="dashboard">Dashboard</option>
+            <option value="e-commerce">E-commerce</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="createProjectBtn">Create Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Page Object Modal -->
+  <div class="modal" id="newPageObjectModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Create Page Object</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label>
+          Page Name:
+          <input type="text" id="pageName" placeholder="LoginPage">
+        </label>
+        <label>
+          Page URL:
+          <input type="text" id="pageUrl" placeholder="https://example.com/login">
+        </label>
+        <div class="checkbox-group">
+          <input type="checkbox" id="autoDetectElements">
+          <label for="autoDetectElements">Auto-detect elements on current page</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="createPageBtn">Create Page Object</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Test Modal -->
+  <div class="modal" id="newTestModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Create Test Specification</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label>
+          Test Name:
+          <input type="text" id="testName" placeholder="LoginTest">
+        </label>
+        <label>
+          Page Object:
+          <select id="testPageObject">
+            <option value="">Select Page Object</option>
+          </select>
+        </label>
+        <label>
+          Test Case Name:
+          <input type="text" id="testCaseName" placeholder="should login successfully">
+        </label>
+        <div class="checkbox-group">
+          <input type="checkbox" id="isDataDriven">
+          <label for="isDataDriven">Data Driven Test</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="createTestSpecBtn">Create Test</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../utils/models.js"></script>
+  <script src="../utils/codeGenerator.js"></script>
+  <script src="../utils/projectManager.js"></script>
+  <script src="../../assets/js/popup.js"></script>
+</body>
+
+</html>

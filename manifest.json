@@ -1,0 +1,44 @@
+{
+    "manifest_version": 3,
+    "name": "Automation Framework Manager",
+    "version": "2.0.0",
+    "description": "Advanced automation framework manager with POM support, multi-tool/language, and project management",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage",
+        "downloads",
+        "webNavigation"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "action": {
+        "default_popup": "src/popup/popup.html",
+        "default_title": "Automation Framework Manager"
+    },
+    "background": {
+        "service_worker": "src/background/background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "src/content/content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "src/content/interceptor.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
+}
