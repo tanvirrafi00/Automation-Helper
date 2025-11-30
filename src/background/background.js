@@ -3,6 +3,11 @@
 let isRecording = false;
 let currentSession = null;
 
+// Open side panel when extension icon is clicked
+chrome.action.onClicked.addListener((tab) => {
+    chrome.sidePanel.open({ windowId: tab.windowId });
+});
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'RECORDED_STEP') {

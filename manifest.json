@@ -8,14 +8,17 @@
         "scripting",
         "storage",
         "downloads",
-        "webNavigation"
+        "webNavigation",
+        "sidePanel"
     ],
     "host_permissions": [
         "<all_urls>"
     ],
     "action": {
-        "default_popup": "src/popup/popup.html",
         "default_title": "Automation Framework Manager"
+    },
+    "side_panel": {
+        "default_path": "src/popup/popup.html"
     },
     "background": {
         "service_worker": "src/background/background.js"
