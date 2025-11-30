@@ -356,6 +356,14 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         document.getElementById('clearStepsBtn').addEventListener('click', clearSteps);
 
         // Export buttons
+        document.getElementById('downloadZipBtn')?.addEventListener('click', async () => {
+            if (!currentProject) {
+                alert('Please select a project first');
+                return;
+            }
+            await projectManager.downloadProjectAsZip(currentProject.id);
+        });
+
         document.getElementById('downloadProjectBtn').addEventListener('click', async () => {
             if (!currentProject) {
                 alert('Please select a project first');

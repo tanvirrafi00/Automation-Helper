@@ -159,7 +159,8 @@
             <pre id="projectStructure">Select a project to see structure...</pre>
           </div>
           <div class="export-actions">
-            <button class="btn btn-primary" id="downloadProjectBtn">⬇ Download Project</button>
+            <button class="btn btn-primary" id="downloadZipBtn">📦 Download as ZIP</button>
+            <button class="btn btn-secondary" id="downloadProjectBtn">⬇ Download Files</button>
             <button class="btn btn-secondary" id="copyAllCodeBtn">📋 Copy All Code</button>
           </div>
         </div>
@@ -278,6 +279,7 @@
   </div>
 
   <!-- Scripts -->
+  <script src="../../assets/js/jszip.min.js"></script>
   <script src="../utils/models.js"></script>
   <script src="../utils/codeGenerator.js"></script>
   <script src="../utils/projectManager.js"></script>
