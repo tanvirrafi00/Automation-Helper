@@ -91,9 +91,11 @@ if (window.hasRun) {
         } else if (message.type === 'CAPTURE_SCREENSHOT') {
             // Request background to capture tab
             chrome.runtime.sendMessage({ type: 'CAPTURE_VISIBLE_TAB' }, (response) => {
-                sendResponse({ screenshotUrl: response.dataUrl });
+                sendResponse({ screenshotUrl: response?.dataUrl });
             });
             return true; // Async response
+        } else if (message.type === 'GET_STATUS') {
+            sendResponse({ isRecording });
         }
         return true;
     });

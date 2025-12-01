@@ -29,7 +29,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize
     await loadProjects();
     await loadCurrentProject();
+
+    // Check for existing session
+    chrome.runtime.sendMessage({ type: 'GET_SESSION' }, (response) => {
+        if (response && response.session) {
+            const session = response.session;
+            // Restore session state
+            if (session.steps && session.steps.length > 0) {
+                recordedSteps = session.steps;
+                recordedSteps.forEach(step => addStepToList(step));
+
+                // Restore selections if possible
+                if (session.pageName) document.getElementById('recorderPageSelect').value = session.pageName;
+                if (session.testName) document.getElementById('recorderTestSelect').value = session.testName;
+                if (session.testCase) document.getElementById('recorderTestCase').value = session.testCase;
+
+                // If we have steps, we might be recording or stopped
+                // Check content script status
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_STATUS' }, (statusResp) => {
+                        if (statusResp && statusResp.isRecording) {
+                            setRecordingUI(true);
+                        } else {
+                            setRecordingUI(false);
+                            // Show generate button since we have steps
+                            const generateBtn = document.getElementById('generateCodeBtn');
+                            if (generateBtn) generateBtn.style.display = 'inline-flex';
+                        }
+                    });
+                });
+            }
+        }
+    });
+
     setupEventListeners();
+
+    function setRecordingUI(recording) {
+        isRecording = recording;
+        document.getElementById('startRecBtn').disabled = recording;
+        document.getElementById('stopRecBtn').disabled = !recording;
+
+        const statusEl = document.getElementById('recordingStatus');
+        if (recording) {
+            statusEl.textContent = 'Recording...';
+            statusEl.style.color = '#ef4444';
+        } else {
+            statusEl.textContent = 'Stopped';
+            statusEl.style.color = '#10b981';
+        }
+    }
 
     // Load all projects
     async function loadProjects() {
@@ -488,37 +536,44 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             return;
         }
 
-        isRecording = true;
-        recordedSteps = [];
-        document.getElementById('stepsList').innerHTML = ''; // Clear previous steps on new recording
+        // Clear previous session
+        chrome.runtime.sendMessage({ type: 'CLEAR_SESSION' }, () => {
+            isRecording = true;
+            recordedSteps = [];
+            document.getElementById('stepsList').innerHTML = ''; // Clear previous steps on new recording
 
-        document.getElementById('startRecBtn').disabled = true;
-        document.getElementById('stopRecBtn').disabled = false;
-        document.getElementById('recordingStatus').textContent = 'Recording...';
-        document.getElementById('recordingStatus').style.color = '#ef4444';
+            setRecordingUI(true);
 
-        // Send message to content script to start recording
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, {
-                type: 'START_RECORDING',
-                pageName,
-                testName,
-                testCaseName
+            // Send message to content script to start recording
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs.length === 0) {
+                    alert('No active tab found');
+                    setRecordingUI(false);
+                    return;
+                }
+
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    type: 'START_RECORDING',
+                    pageName,
+                    testName,
+                    testCaseName
+                }).catch(err => {
+                    console.error('Failed to start recording:', err);
+                    alert('Please refresh the page and try again.');
+                    setRecordingUI(false);
+                });
             });
         });
     }
 
     function stopRecording() {
-        isRecording = false;
-
-        document.getElementById('startRecBtn').disabled = false;
-        document.getElementById('stopRecBtn').disabled = true;
-        document.getElementById('recordingStatus').textContent = 'Stopped';
-        document.getElementById('recordingStatus').style.color = '#10b981';
+        setRecordingUI(false);
 
         // Send message to content script to stop recording
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, { type: 'STOP_RECORDING' });
+            if (tabs.length > 0) {
+                chrome.tabs.sendMessage(tabs[0].id, { type: 'STOP_RECORDING' });
+            }
         });
 
         // Show generate code button if steps exist
