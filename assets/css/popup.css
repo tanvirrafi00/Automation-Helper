@@ -415,6 +415,49 @@ body {
     font-size: 13px;
     border-left: 3px solid var(--primary);
     animation: slideIn 0.3s ease-out;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.step-item:hover {
+    background: #e5e7eb;
+}
+
+.step-item.step-running {
+    border-left-color: var(--warning);
+    background: #fffbeb;
+}
+
+.step-item.step-success {
+    border-left-color: var(--success);
+    background: #ecfdf5;
+}
+
+.step-item.step-failed {
+    border-left-color: var(--danger);
+    background: #fef2f2;
+}
+
+.step-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--gray);
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    padding: 0 4px;
+}
+
+.step-item:hover .step-delete-btn {
+    opacity: 1;
+}
+
+.step-delete-btn:hover {
+    color: var(--danger);
 }
 
 @keyframes slideIn {

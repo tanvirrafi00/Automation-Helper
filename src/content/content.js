@@ -103,8 +103,17 @@ if (window.hasRun) {
         createOverlay();
         updateOverlay('Replaying steps...');
 
-        for (const step of steps) {
+        for (let i = 0; i < steps.length; i++) {
+            const step = steps[i];
             updateOverlay(`Executing: ${step.action} on ${step.elementName}`);
+
+            // Notify popup
+            chrome.runtime.sendMessage({
+                type: 'REPLAY_PROGRESS',
+                stepIndex: i,
+                status: 'running'
+            });
+
             await new Promise(resolve => setTimeout(resolve, 1000)); // Delay for visibility
 
             try {
@@ -112,6 +121,13 @@ if (window.hasRun) {
                 if (!element) {
                     console.error(`Element not found: ${step.selector}`);
                     updateOverlay(`Error: Element not found ${step.elementName}`);
+
+                    chrome.runtime.sendMessage({
+                        type: 'REPLAY_PROGRESS',
+                        stepIndex: i,
+                        status: 'failed',
+                        error: 'Element not found'
+                    });
                     continue;
                 }
 
@@ -126,9 +142,31 @@ if (window.hasRun) {
                 } else if (step.action === 'select') {
                     element.value = step.value;
                     element.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (step.action === 'screenshot') {
+                    // Request screenshot
+                    await new Promise(resolve => {
+                        chrome.runtime.sendMessage({ type: 'CAPTURE_SCREENSHOT' }, (response) => {
+                            // In a real replay, we might want to save this somewhere
+                            // For now, we just simulate the delay
+                            setTimeout(resolve, 500);
+                        });
+                    });
                 }
+
+                chrome.runtime.sendMessage({
+                    type: 'REPLAY_PROGRESS',
+                    stepIndex: i,
+                    status: 'success'
+                });
+
             } catch (e) {
                 console.error(`Error executing step: ${e.message}`);
+                chrome.runtime.sendMessage({
+                    type: 'REPLAY_PROGRESS',
+                    stepIndex: i,
+                    status: 'failed',
+                    error: e.message
+                });
             }
         }
 
@@ -157,6 +195,8 @@ if (window.hasRun) {
         const element = e.target;
         // Ignore clicks on our overlay
         if (overlay && overlay.contains(element)) return;
+
+        highlightElement(element);
 
         const selector = generateSelector(element);
         const elementType = getElementType(element);
@@ -188,6 +228,9 @@ if (window.hasRun) {
         if (!isRecording) return;
 
         const element = e.target;
+
+        highlightElement(element);
+
         const selector = generateSelector(element);
         const elementType = getElementType(element);
         const elementName = generateElementName(element, elementType);
@@ -220,6 +263,8 @@ if (window.hasRun) {
 
         const element = e.target;
         if (element.tagName.toLowerCase() !== 'select') return;
+
+        highlightElement(element);
 
         const selector = generateSelector(element);
         const elementType = 'select';

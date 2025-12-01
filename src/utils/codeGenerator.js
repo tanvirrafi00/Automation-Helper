@@ -223,6 +223,7 @@ class CodeGenerator {
                     if (s.action === 'click') code += `await this.page.click('${s.selector}')`;
                     else if (s.action === 'fill') code += `await this.page.fill('${s.selector}', ${s.value})`;
                     else if (s.action === 'navigate') code += `await this.page.goto('${s.value}')`;
+                    else if (s.action === 'screenshot') code += `await this.page.screenshot({ path: '${s.value || 'screenshot.png'}' })`;
                     else code += `// ${s.action}`;
 
                     // Assertions
@@ -243,6 +244,7 @@ class CodeGenerator {
                     if (s.action === 'click') code += `await this.page.click('${s.selector}')`;
                     else if (s.action === 'fill') code += `await this.page.fill('${s.selector}', ${s.value})`;
                     else if (s.action === 'navigate') code += `await this.page.goto('${s.value}')`;
+                    else if (s.action === 'screenshot') code += `await this.page.screenshot({ path: '${s.value || 'screenshot.png'}' })`;
                     else code += `// ${s.action}`;
 
                     // Assertions
@@ -257,12 +259,14 @@ class CodeGenerator {
                     if (s.action === 'click') return `await self.page.click("${s.selector}")`;
                     if (s.action === 'fill') return `await self.page.fill("${s.selector}", ${s.value})`;
                     if (s.action === 'navigate') return `await self.page.goto("${s.value}")`;
+                    if (s.action === 'screenshot') return `await self.page.screenshot(path="${s.value || 'screenshot.png'}")`;
                     return `# ${s.action}`;
                 },
                 java: (s) => {
                     if (s.action === 'click') return `page.click("${s.selector}")`;
                     if (s.action === 'fill') return `page.fill("${s.selector}", ${s.value})`;
                     if (s.action === 'navigate') return `page.navigate("${s.value}")`;
+                    if (s.action === 'screenshot') return `page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("${s.value || 'screenshot.png'}")))`;
                     return `// ${s.action}`;
                 }
             },

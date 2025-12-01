@@ -403,20 +403,33 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             });
         });
 
-        // Screenshot button (add to recorder controls in HTML first if needed, or just logic here)
-        // Assuming we add a button with id 'screenshotBtn'
+        // Screenshot button
         document.getElementById('screenshotBtn')?.addEventListener('click', () => {
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                chrome.tabs.sendMessage(tabs[0].id, { type: 'CAPTURE_SCREENSHOT' }, (response) => {
-                    if (response && response.screenshotUrl) {
-                        // Save screenshot (mock implementation: download it)
-                        const link = document.createElement('a');
-                        link.href = response.screenshotUrl;
-                        link.download = `screenshot_${Date.now()}.png`;
-                        link.click();
-                    }
+            if (isRecording) {
+                // Add screenshot step
+                const step = {
+                    action: 'screenshot',
+                    selector: 'body', // Placeholder
+                    value: `screenshot_${Date.now()}.png`,
+                    elementName: 'Page',
+                    timestamp: Date.now()
+                };
+                recordedSteps.push(step);
+                addStepToList(step);
+                generateCode();
+            } else {
+                // Immediate screenshot
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    chrome.tabs.sendMessage(tabs[0].id, { type: 'CAPTURE_SCREENSHOT' }, (response) => {
+                        if (response && response.screenshotUrl) {
+                            const link = document.createElement('a');
+                            link.href = response.screenshotUrl;
+                            link.download = `screenshot_${Date.now()}.png`;
+                            link.click();
+                        }
+                    });
                 });
-            });
+            }
         });
 
         // Dark Mode Toggle
@@ -477,6 +490,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
         isRecording = true;
         recordedSteps = [];
+        document.getElementById('stepsList').innerHTML = ''; // Clear previous steps on new recording
 
         document.getElementById('startRecBtn').disabled = true;
         document.getElementById('stopRecBtn').disabled = false;
@@ -611,15 +625,41 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         }
     });
 
-    function addStepToList(step) {
+    // Listen for replay progress
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message.type === 'REPLAY_PROGRESS') {
+            const { stepIndex, status, error } = message;
+            const stepsList = document.getElementById('stepsList');
+            const stepItems = stepsList.querySelectorAll('.step-item');
+
+            if (stepItems[stepIndex]) {
+                const item = stepItems[stepIndex];
+                item.classList.remove('step-running', 'step-success', 'step-failed');
+
+                if (status === 'running') {
+                    item.classList.add('step-running');
+                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (status === 'success') {
+                    item.classList.add('step-success');
+                } else if (status === 'failed') {
+                    item.classList.add('step-failed');
+                    item.title = error || 'Step failed';
+                }
+            }
+        }
+    });
+
+    function addStepToList(step, index) {
         const stepsList = document.getElementById('stepsList');
         const li = document.createElement('li');
         li.className = 'step-item';
+        li.dataset.index = index !== undefined ? index : recordedSteps.length - 1;
 
         // Add icon based on action
         const icon = step.action === 'click' ? '🖱️' :
             step.action === 'fill' ? '⌨️' :
-                step.action === 'select' ? '📋' : '▶️';
+                step.action === 'select' ? '📋' :
+                    step.action === 'screenshot' ? '📷' : '▶️';
 
         // Format step text
         let stepText = `${icon} ${step.action.toUpperCase()}`;
@@ -635,7 +675,14 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 <span class="step-text">${stepText}</span>
                 <span class="step-selector">${step.selector}</span>
             </div>
+            <button class="step-delete-btn" title="Delete Step">×</button>
         `;
+
+        // Add delete handler
+        li.querySelector('.step-delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteStep(parseInt(li.dataset.index));
+        });
 
         stepsList.appendChild(li);
 
@@ -643,6 +690,15 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         stepsList.scrollTop = stepsList.scrollHeight;
 
         // Generate code preview
+        generateCode();
+    }
+
+    function deleteStep(index) {
+        recordedSteps.splice(index, 1);
+        // Re-render list
+        const stepsList = document.getElementById('stepsList');
+        stepsList.innerHTML = '';
+        recordedSteps.forEach((step, i) => addStepToList(step, i));
         generateCode();
     }
 
