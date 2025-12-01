@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="list-item-header">
           <span class="list-item-title">${page.name}</span>
           <div class="list-item-actions">
-            <button class="btn btn-secondary" onclick="viewPageObject('${page.name}')">View</button>
+            <button class="btn btn-secondary" onclick="viewPageObject('${page.name}')">View Code</button>
             <button class="btn btn-danger" onclick="deletePageObject('${page.name}')">Delete</button>
           </div>
         </div>
@@ -175,17 +175,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         Object.values(currentProject.tests).forEach(test => {
             const item = document.createElement('div');
             item.className = 'list-item';
+
+            let casesHtml = '';
+            if (test.testCases && test.testCases.length > 0) {
+                casesHtml = '<div class="test-cases-list" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">';
+                test.testCases.forEach(tc => {
+                    casesHtml += `
+                        <div class="test-case-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px;">
+                            <span>🔹 ${tc.name}</span>
+                            <button class="btn btn-sm btn-success" onclick="runTestCase('${test.name}', '${tc.name}')" title="Run Test Case">▶</button>
+                        </div>
+                    `;
+                });
+                casesHtml += '</div>';
+            }
+
             item.innerHTML = `
         <div class="list-item-header">
           <span class="list-item-title">${test.name}</span>
           <div class="list-item-actions">
-            <button class="btn btn-secondary" onclick="viewTest('${test.name}')">View</button>
+            <button class="btn btn-secondary" onclick="viewTest('${test.name}')">View Code</button>
             <button class="btn btn-danger" onclick="deleteTest('${test.name}')">Delete</button>
           </div>
         </div>
         <div class="list-item-meta">
           Page: ${test.pageName} • ${test.testCases.length} test cases
         </div>
+        ${casesHtml}
       `;
             list.appendChild(item);
         });
@@ -819,7 +835,13 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
     // Global functions for list item actions
     window.viewPageObject = async (name) => {
-        alert(`Viewing ${name} - Full editor coming soon!`);
+        if (!currentProject || !currentProject.pages[name]) return;
+
+        const pageObject = currentProject.pages[name];
+        const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+        const code = generator.generatePageObject(pageObject);
+
+        showCodeViewer(`Page Object: ${name}`, code);
     };
 
     window.deletePageObject = async (name) => {
@@ -831,7 +853,20 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     };
 
     window.viewTest = async (name) => {
-        alert(`Viewing ${name} - Full editor coming soon!`);
+        if (!currentProject || !currentProject.tests[name]) return;
+
+        const testSpec = currentProject.tests[name];
+        const pageObject = currentProject.pages[testSpec.pageName];
+
+        if (!pageObject) {
+            alert('Associated Page Object not found!');
+            return;
+        }
+
+        const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+        const code = generator.generateTestSpec(testSpec, pageObject);
+
+        showCodeViewer(`Test Spec: ${name}`, code);
     };
 
     window.deleteTest = async (name) => {
@@ -841,4 +876,52 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             await loadCurrentProject();
         }
     };
+
+    window.runTestCase = async (testName, caseName) => {
+        if (!currentProject || !currentProject.tests[testName]) return;
+
+        const testSpec = currentProject.tests[testName];
+        const testCase = testSpec.testCases.find(tc => tc.name === caseName);
+
+        if (!testCase || !testCase.steps || testCase.steps.length === 0) {
+            alert('No steps found in this test case');
+            return;
+        }
+
+        // Switch to recorder tab to show progress
+        document.querySelector('[data-tab="recorder"]').click();
+
+        // Populate steps list
+        recordedSteps = testCase.steps;
+        document.getElementById('stepsList').innerHTML = '';
+        recordedSteps.forEach((step, i) => addStepToList(step, i));
+
+        // Start replay
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs.length === 0) {
+                alert('No active tab found');
+                return;
+            }
+            chrome.tabs.sendMessage(tabs[0].id, {
+                type: 'REPLAY_STEPS',
+                steps: recordedSteps
+            }).catch(err => {
+                console.error('Replay failed:', err);
+                alert('Failed to start replay. Please refresh the page.');
+            });
+        });
+    };
+
+    function showCodeViewer(title, code) {
+        const modal = document.getElementById('codeViewerModal');
+        document.getElementById('codeViewerTitle').textContent = title;
+        document.getElementById('codeViewerContent').textContent = code;
+        openModal(modal);
+    }
+
+    document.getElementById('copyViewerCodeBtn').addEventListener('click', () => {
+        const code = document.getElementById('codeViewerContent').textContent;
+        navigator.clipboard.writeText(code);
+        alert('Code copied to clipboard!');
+    });
 });

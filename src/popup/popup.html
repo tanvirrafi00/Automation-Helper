@@ -279,6 +279,23 @@
     </div>
   </div>
 
+  <!-- Code Viewer Modal -->
+  <div class="modal" id="codeViewerModal">
+    <div class="modal-content large-modal">
+      <div class="modal-header">
+        <h2 id="codeViewerTitle">Code Viewer</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre id="codeViewerContent" class="code-block"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-cancel">Close</button>
+        <button class="btn btn-primary" id="copyViewerCodeBtn">Copy Code</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="../../assets/js/jszip.min.js"></script>
   <script src="../utils/models.js"></script>

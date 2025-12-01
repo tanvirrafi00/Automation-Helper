@@ -677,6 +677,38 @@ body {
     gap: 12px;
 }
 
+/* Large Modal */
+.large-modal {
+    width: 800px;
+    max-width: 95vw;
+    height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.large-modal .modal-body {
+    flex: 1;
+    overflow: hidden;
+    padding: 0;
+}
+
+.code-block {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 16px;
+    margin: 0;
+    height: 100%;
+    overflow: auto;
+    font-family: 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Dark Mode Adjustments */
+body.dark-mode .code-block {
+    background: #000000;
+}
+
 /* Dark Mode */
 body.dark-mode {
     --primary: #818cf8;
