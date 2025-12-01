@@ -850,13 +850,38 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
     // Global functions for list item actions
     window.viewPageObject = async (name) => {
-        if (!currentProject || !currentProject.pages[name]) return;
+        console.log('viewPageObject called with:', name);
 
-        const pageObject = currentProject.pages[name];
-        const generator = new CodeGenerator(currentProject.tool, currentProject.language);
-        const code = generator.generatePageObject(pageObject);
+        if (!currentProject) {
+            alert('No project selected!');
+            return;
+        }
 
-        showCodeViewer(`Page Object: ${name}`, code);
+        if (!currentProject.pages[name]) {
+            alert(`Page Object "${name}" not found!`);
+            console.error('Available pages:', Object.keys(currentProject.pages));
+            return;
+        }
+
+        try {
+            const pageObject = currentProject.pages[name];
+            console.log('Page Object:', pageObject);
+
+            const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+            const code = generator.generatePageObject(pageObject);
+
+            console.log('Generated code:', code);
+
+            if (!code || code.trim() === '') {
+                alert('No code generated. The page object might be empty.');
+                return;
+            }
+
+            showCodeViewer(`Page Object: ${name}`, code);
+        } catch (err) {
+            console.error('Error in viewPageObject:', err);
+            alert('Error generating code: ' + err.message);
+        }
     };
 
     window.deletePageObject = async (name) => {
@@ -868,20 +893,46 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     };
 
     window.viewTest = async (name) => {
-        if (!currentProject || !currentProject.tests[name]) return;
+        console.log('viewTest called with:', name);
 
-        const testSpec = currentProject.tests[name];
-        const pageObject = currentProject.pages[testSpec.pageName];
-
-        if (!pageObject) {
-            alert('Associated Page Object not found!');
+        if (!currentProject) {
+            alert('No project selected!');
             return;
         }
 
-        const generator = new CodeGenerator(currentProject.tool, currentProject.language);
-        const code = generator.generateTestSpec(testSpec, pageObject);
+        if (!currentProject.tests[name]) {
+            alert(`Test "${name}" not found!`);
+            console.error('Available tests:', Object.keys(currentProject.tests));
+            return;
+        }
 
-        showCodeViewer(`Test Spec: ${name}`, code);
+        try {
+            const testSpec = currentProject.tests[name];
+            const pageObject = currentProject.pages[testSpec.pageName];
+
+            console.log('Test Spec:', testSpec);
+            console.log('Page Object:', pageObject);
+
+            if (!pageObject) {
+                alert(`Associated Page Object "${testSpec.pageName}" not found!`);
+                return;
+            }
+
+            const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+            const code = generator.generateTestSpec(testSpec, pageObject);
+
+            console.log('Generated code:', code);
+
+            if (!code || code.trim() === '') {
+                alert('No code generated. The test might be empty.');
+                return;
+            }
+
+            showCodeViewer(`Test Suite: ${name}`, code);
+        } catch (err) {
+            console.error('Error in viewTest:', err);
+            alert('Error generating code: ' + err.message);
+        }
     };
 
     window.deleteTest = async (name) => {
@@ -893,32 +944,56 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     };
 
     window.viewTestCase = async (testName, caseIndex) => {
-        if (!currentProject || !currentProject.tests[testName]) return;
+        console.log('viewTestCase called with:', testName, caseIndex);
 
-        const testSpec = currentProject.tests[testName];
-        const testCase = testSpec.testCases[caseIndex];
-
-        if (!testCase) {
-            alert('Test case not found!');
+        if (!currentProject) {
+            alert('No project selected!');
             return;
         }
 
-        const pageObject = currentProject.pages[testSpec.pageName];
-        if (!pageObject) {
-            alert('Associated Page Object not found!');
+        if (!currentProject.tests[testName]) {
+            alert(`Test "${testName}" not found!`);
             return;
         }
 
-        // Create a temporary test spec with only this test case
-        const tempTestSpec = {
-            ...testSpec,
-            testCases: [testCase]
-        };
+        try {
+            const testSpec = currentProject.tests[testName];
+            const testCase = testSpec.testCases[caseIndex];
 
-        const generator = new CodeGenerator(currentProject.tool, currentProject.language);
-        const code = generator.generateTestSpec(tempTestSpec, pageObject);
+            console.log('Test Case:', testCase);
 
-        showCodeViewer(`Test Case: ${testCase.name}`, code);
+            if (!testCase) {
+                alert('Test case not found!');
+                return;
+            }
+
+            const pageObject = currentProject.pages[testSpec.pageName];
+            if (!pageObject) {
+                alert(`Associated Page Object "${testSpec.pageName}" not found!`);
+                return;
+            }
+
+            // Create a temporary test spec with only this test case
+            const tempTestSpec = {
+                ...testSpec,
+                testCases: [testCase]
+            };
+
+            const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+            const code = generator.generateTestSpec(tempTestSpec, pageObject);
+
+            console.log('Generated code:', code);
+
+            if (!code || code.trim() === '') {
+                alert('No code generated. The test case might be empty.');
+                return;
+            }
+
+            showCodeViewer(`Test Case: ${testCase.name}`, code);
+        } catch (err) {
+            console.error('Error in viewTestCase:', err);
+            alert('Error generating code: ' + err.message);
+        }
     };
 
     window.deleteTestCase = async (testName, caseIndex) => {
@@ -937,38 +1012,55 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     };
 
     window.runTestCase = async (testName, caseName) => {
-        if (!currentProject || !currentProject.tests[testName]) return;
+        console.log('runTestCase called with:', testName, caseName);
 
-        const testSpec = currentProject.tests[testName];
-        const testCase = testSpec.testCases.find(tc => tc.name === caseName);
-
-        if (!testCase || !testCase.steps || testCase.steps.length === 0) {
-            alert('No steps found in this test case');
+        if (!currentProject) {
+            alert('No project selected!');
             return;
         }
 
-        // Switch to recorder tab to show progress
-        document.querySelector('[data-tab="recorder"]').click();
+        if (!currentProject.tests[testName]) {
+            alert(`Test "${testName}" not found!`);
+            return;
+        }
 
-        // Populate steps list
-        recordedSteps = testCase.steps;
-        document.getElementById('stepsList').innerHTML = '';
-        recordedSteps.forEach((step, i) => addStepToList(step, i));
+        try {
+            const testSpec = currentProject.tests[testName];
+            const testCase = testSpec.testCases.find(tc => tc.name === caseName);
 
-        // Start replay
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs.length === 0) {
-                alert('No active tab found');
+            console.log('Test Case to run:', testCase);
+
+            if (!testCase || !testCase.steps || testCase.steps.length === 0) {
+                alert('No steps found in this test case. Please record some steps first.');
                 return;
             }
-            chrome.tabs.sendMessage(tabs[0].id, {
-                type: 'REPLAY_STEPS',
-                steps: recordedSteps
-            }).catch(err => {
-                console.error('Replay failed:', err);
-                alert('Failed to start replay. Please refresh the page.');
+
+            // Switch to recorder tab to show progress
+            document.querySelector('[data-tab="recorder"]').click();
+
+            // Populate steps list
+            recordedSteps = testCase.steps;
+            document.getElementById('stepsList').innerHTML = '';
+            recordedSteps.forEach((step, i) => addStepToList(step, i));
+
+            // Start replay
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs.length === 0) {
+                    alert('No active tab found. Please open a webpage first.');
+                    return;
+                }
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    type: 'REPLAY_STEPS',
+                    steps: recordedSteps
+                }).catch(err => {
+                    console.error('Replay failed:', err);
+                    alert('Failed to start replay. Please refresh the page and try again.');
+                });
             });
-        });
+        } catch (err) {
+            console.error('Error in runTestCase:', err);
+            alert('Error running test case: ' + err.message);
+        }
     };
 
     // Make showCodeViewer globally accessible
