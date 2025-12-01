@@ -263,8 +263,13 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         // Project selection
         projectSelect.addEventListener('change', async (e) => {
             if (e.target.value) {
-                await projectManager.setCurrentProject(e.target.value);
-                await loadCurrentProject();
+                try {
+                    await projectManager.setCurrentProject(e.target.value);
+                    await loadCurrentProject();
+                } catch (err) {
+                    console.error('Failed to load project:', err);
+                    alert('Failed to load project. Please try again.');
+                }
             }
         });
 
@@ -285,10 +290,16 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 return;
             }
 
-            const project = await projectManager.createProject(name, tool, language, template);
-            closeModal(newProjectModal);
-            await loadProjects();
-            await loadCurrentProject();
+            try {
+                await projectManager.createProject(name, tool, language, template);
+                closeModal(newProjectModal);
+                await loadProjects();
+                await loadCurrentProject();
+                alert('Project created successfully!');
+            } catch (err) {
+                console.error('Failed to create project:', err);
+                alert('Failed to create project. Please try again.');
+            }
         });
 
         // Add page object button
@@ -301,6 +312,10 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         });
 
         document.getElementById('createPageObjectBtn').addEventListener('click', () => {
+            if (!currentProject) {
+                alert('Please select a project first');
+                return;
+            }
             openModal(newPageObjectModal);
         });
 
@@ -315,24 +330,31 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 return;
             }
 
-            const pageObject = new PageObject(name, url, currentProject.tool, currentProject.language);
+            try {
+                const pageObject = new PageObject(name, url, currentProject.tool, currentProject.language);
 
-            if (autoDetect) {
-                // Send message to content script to detect elements
-                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                    chrome.tabs.sendMessage(tabs[0].id, { type: 'DETECT_ELEMENTS' }, (response) => {
-                        if (response && response.elements) {
-                            response.elements.forEach(el => {
-                                pageObject.addElement(el.name, el.selector, el.type);
-                            });
-                        }
+                if (autoDetect) {
+                    // Send message to content script to detect elements
+                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                        if (tabs.length === 0) return;
+                        chrome.tabs.sendMessage(tabs[0].id, { type: 'DETECT_ELEMENTS' }, (response) => {
+                            if (response && response.elements) {
+                                response.elements.forEach(el => {
+                                    pageObject.addElement(el.name, el.selector, el.type);
+                                });
+                            }
+                        });
                     });
-                });
-            }
+                }
 
-            await projectManager.addPageObject(currentProject.id, pageObject);
-            closeModal(newPageObjectModal);
-            await loadCurrentProject();
+                await projectManager.addPageObject(currentProject.id, pageObject);
+                closeModal(newPageObjectModal);
+                await loadCurrentProject();
+                alert('Page object created successfully!');
+            } catch (err) {
+                console.error('Failed to create page object:', err);
+                alert('Failed to create page object. Please try again.');
+            }
         });
 
         // Add test button
@@ -341,17 +363,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 alert('Please select a project first');
                 return;
             }
-
-            // Populate page object select
-            const select = document.getElementById('testPageObject');
-            select.innerHTML = '<option value="">Select Page Object</option>';
-            Object.keys(currentProject.pages).forEach(pageName => {
-                const option = document.createElement('option');
-                option.value = pageName;
-                option.textContent = pageName;
-                select.appendChild(option);
-            });
-
+            populatePageObjectSelect();
             openModal(newTestModal);
         });
 
@@ -360,8 +372,11 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 alert('Please select a project first');
                 return;
             }
+            populatePageObjectSelect();
+            openModal(newTestModal);
+        });
 
-            // Populate page object select
+        function populatePageObjectSelect() {
             const select = document.getElementById('testPageObject');
             select.innerHTML = '<option value="">Select Page Object</option>';
             Object.keys(currentProject.pages).forEach(pageName => {
@@ -370,9 +385,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 option.textContent = pageName;
                 select.appendChild(option);
             });
-
-            openModal(newTestModal);
-        });
+        }
 
         // Create test spec
         document.getElementById('createTestSpecBtn').addEventListener('click', async () => {
@@ -386,16 +399,22 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 return;
             }
 
-            const testSpec = new TestSpec(name, pageName, currentProject.tool, currentProject.language);
+            try {
+                const testSpec = new TestSpec(name, pageName, currentProject.tool, currentProject.language);
 
-            if (testCaseName) {
-                const data = isDataDriven ? [{ username: 'test', password: '123' }] : null;
-                testSpec.addTestCase(testCaseName, [], data);
+                if (testCaseName) {
+                    const data = isDataDriven ? [{ username: 'test', password: '123' }] : null;
+                    testSpec.addTestCase(testCaseName, [], data);
+                }
+
+                await projectManager.addTestSpec(currentProject.id, testSpec);
+                closeModal(newTestModal);
+                await loadCurrentProject();
+                alert('Test spec created successfully!');
+            } catch (err) {
+                console.error('Failed to create test spec:', err);
+                alert('Failed to create test spec. Please try again.');
             }
-
-            await projectManager.addTestSpec(currentProject.id, testSpec);
-            closeModal(newTestModal);
-            await loadCurrentProject();
         });
 
         // Recorder controls
@@ -410,7 +429,12 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 alert('Please select a project first');
                 return;
             }
-            await projectManager.downloadProjectAsZip(currentProject.id);
+            try {
+                await projectManager.downloadProjectAsZip(currentProject.id);
+            } catch (err) {
+                console.error('Failed to download ZIP:', err);
+                alert('Failed to download ZIP. Please try again.');
+            }
         });
 
         document.getElementById('downloadProjectBtn').addEventListener('click', async () => {
@@ -418,7 +442,22 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 alert('Please select a project first');
                 return;
             }
-            await projectManager.downloadProject(currentProject.id);
+            try {
+                await projectManager.downloadProject(currentProject.id);
+            } catch (err) {
+                console.error('Failed to download project:', err);
+                alert('Failed to download project. Please try again.');
+            }
+        });
+
+        document.getElementById('copyAllCodeBtn').addEventListener('click', () => {
+            if (!currentProject) {
+                alert('Please select a project first');
+                return;
+            }
+            const preview = document.getElementById('projectStructure');
+            navigator.clipboard.writeText(preview.textContent);
+            alert('Project structure copied to clipboard!');
         });
 
         document.getElementById('copyCodeBtn').addEventListener('click', () => {
@@ -444,9 +483,16 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
             // Send steps to content script
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs.length === 0) {
+                    alert('No active tab found');
+                    return;
+                }
                 chrome.tabs.sendMessage(tabs[0].id, {
                     type: 'REPLAY_STEPS',
                     steps: recordedSteps
+                }).catch(err => {
+                    console.error('Replay failed:', err);
+                    alert('Failed to start replay. Please refresh the page.');
                 });
             });
         });
@@ -468,7 +514,12 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             } else {
                 // Immediate screenshot
                 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (tabs.length === 0) return;
                     chrome.tabs.sendMessage(tabs[0].id, { type: 'CAPTURE_SCREENSHOT' }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.error('Screenshot failed:', chrome.runtime.lastError);
+                            return;
+                        }
                         if (response && response.screenshotUrl) {
                             const link = document.createElement('a');
                             link.href = response.screenshotUrl;
