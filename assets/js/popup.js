@@ -174,32 +174,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         list.innerHTML = '';
         Object.values(currentProject.tests).forEach(test => {
             const item = document.createElement('div');
-            item.className = 'list-item';
+            item.className = 'list-item test-suite-item';
 
             let casesHtml = '';
             if (test.testCases && test.testCases.length > 0) {
                 casesHtml = '<div class="test-cases-list">';
-                test.testCases.forEach(tc => {
+                casesHtml += '<div class="test-cases-header">📋 Test Cases:</div>';
+                test.testCases.forEach((tc, index) => {
+                    const stepCount = tc.steps ? tc.steps.length : 0;
                     casesHtml += `
                         <div class="test-case-item">
-                            <span>🔹 ${tc.name}</span>
-                            <button class="btn btn-sm btn-success" onclick="runTestCase('${test.name}', '${tc.name}')" title="Run Test Case">▶ Run</button>
+                            <div class="test-case-info">
+                                <span class="test-case-name">🔹 ${tc.name}</span>
+                                <span class="test-case-meta">${stepCount} steps</span>
+                            </div>
+                            <div class="test-case-actions">
+                                <button class="btn btn-sm btn-secondary" onclick="viewTestCase('${test.name}', ${index})" title="View Code">👁️ View</button>
+                                <button class="btn btn-sm btn-success" onclick="runTestCase('${test.name}', '${tc.name}')" title="Run Test Case">▶ Run</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteTestCase('${test.name}', ${index})" title="Delete">×</button>
+                            </div>
                         </div>
                     `;
                 });
                 casesHtml += '</div>';
+            } else {
+                casesHtml = '<div class="test-cases-list"><p class="empty-state" style="padding: 12px; margin: 0;">No test cases yet. Record some steps to add test cases.</p></div>';
             }
 
             item.innerHTML = `
         <div class="list-item-header">
-          <span class="list-item-title">${test.name}</span>
+          <div class="test-suite-title">
+            <span class="suite-icon">📦</span>
+            <span class="list-item-title">${test.name}</span>
+            <span class="suite-badge">${test.testCases.length} test case${test.testCases.length !== 1 ? 's' : ''}</span>
+          </div>
           <div class="list-item-actions">
-            <button class="btn btn-secondary" onclick="viewTest('${test.name}')">View Code</button>
-            <button class="btn btn-danger" onclick="deleteTest('${test.name}')">Delete</button>
+            <button class="btn btn-secondary" onclick="viewTest('${test.name}')">View All Code</button>
+            <button class="btn btn-danger" onclick="deleteTest('${test.name}')">Delete Suite</button>
           </div>
         </div>
         <div class="list-item-meta">
-          Page: ${test.pageName} • ${test.testCases.length} test cases
+          Page Object: ${test.pageName} • Tool: ${test.tool} • Language: ${test.language}
         </div>
         ${casesHtml}
       `;
@@ -870,8 +885,52 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     };
 
     window.deleteTest = async (name) => {
-        if (confirm(`Delete test "${name}"?`)) {
+        if (confirm(`Delete test suite "${name}" and all its test cases?`)) {
             delete currentProject.tests[name];
+            await projectManager.updateProject(currentProject.id, currentProject);
+            await loadCurrentProject();
+        }
+    };
+
+    window.viewTestCase = async (testName, caseIndex) => {
+        if (!currentProject || !currentProject.tests[testName]) return;
+
+        const testSpec = currentProject.tests[testName];
+        const testCase = testSpec.testCases[caseIndex];
+
+        if (!testCase) {
+            alert('Test case not found!');
+            return;
+        }
+
+        const pageObject = currentProject.pages[testSpec.pageName];
+        if (!pageObject) {
+            alert('Associated Page Object not found!');
+            return;
+        }
+
+        // Create a temporary test spec with only this test case
+        const tempTestSpec = {
+            ...testSpec,
+            testCases: [testCase]
+        };
+
+        const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+        const code = generator.generateTestSpec(tempTestSpec, pageObject);
+
+        showCodeViewer(`Test Case: ${testCase.name}`, code);
+    };
+
+    window.deleteTestCase = async (testName, caseIndex) => {
+        if (!currentProject || !currentProject.tests[testName]) return;
+
+        const testSpec = currentProject.tests[testName];
+        const testCase = testSpec.testCases[caseIndex];
+
+        if (!testCase) return;
+
+        if (confirm(`Delete test case "${testCase.name}"?`)) {
+            testSpec.testCases.splice(caseIndex, 1);
             await projectManager.updateProject(currentProject.id, currentProject);
             await loadCurrentProject();
         }

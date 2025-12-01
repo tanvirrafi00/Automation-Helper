@@ -780,6 +780,42 @@ body.dark-mode .generated-code pre {
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
+/* Test Suite Styling */
+.test-suite-item {
+    border-left: 4px solid var(--primary);
+}
+
+.test-suite-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.suite-icon {
+    font-size: 20px;
+}
+
+.suite-badge {
+    background: var(--primary);
+    color: var(--white);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* Test Cases Header */
+.test-cases-header {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--dark);
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: var(--light-gray);
+    border-radius: 6px;
+}
+
 /* Test Case List */
 .test-cases-list {
     margin-top: 12px;
@@ -791,21 +827,44 @@ body.dark-mode .generated-code pre {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
+    padding: 10px 12px;
     font-size: 13px;
     border-radius: 6px;
     transition: background 0.2s;
+    margin-bottom: 6px;
+    border: 1px solid transparent;
 }
 
 .test-case-item:hover {
     background: var(--light-gray);
+    border-color: var(--border);
 }
 
-.test-case-item span {
+.test-case-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.test-case-name {
     display: flex;
     align-items: center;
     gap: 8px;
     font-weight: 500;
+    color: var(--dark);
+}
+
+.test-case-meta {
+    font-size: 11px;
+    color: var(--gray);
+    margin-left: 24px;
+}
+
+.test-case-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
 }
 
 .btn-sm {
