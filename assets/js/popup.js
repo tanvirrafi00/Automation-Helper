@@ -705,37 +705,68 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         const testCaseName = document.getElementById('recorderTestCase').value;
 
         if (!pageName || !testName || !testCaseName) {
-            alert('Please select page object, test spec, and enter test case name');
+            alert('Please select Page Object, Test Spec, and enter a Test Case name before recording.');
             return;
         }
 
-        // Clear previous session
-        chrome.runtime.sendMessage({ type: 'CLEAR_SESSION' }, () => {
-            isRecording = true;
-            recordedSteps = [];
-            document.getElementById('stepsList').innerHTML = ''; // Clear previous steps on new recording
+        setRecordingUI(true);
 
-            setRecordingUI(true);
+        // Get active tab
+        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+            if (tabs.length === 0) {
+                alert('No active tab found. Please open a webpage first.');
+                setRecordingUI(false);
+                return;
+            }
 
-            // Send message to content script to start recording
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                if (tabs.length === 0) {
-                    alert('No active tab found');
-                    setRecordingUI(false);
-                    return;
+            const tab = tabs[0];
+
+            // Check if we can inject scripts (some pages like chrome:// don't allow it)
+            if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+                alert('Cannot record on Chrome internal pages. Please navigate to a regular website.');
+                setRecordingUI(false);
+                return;
+            }
+
+            try {
+                // First, try to ping the content script to see if it's loaded
+                const response = await chrome.tabs.sendMessage(tab.id, { type: 'PING' }).catch(() => null);
+
+                if (!response) {
+                    // Content script not loaded, inject it
+                    console.log('Content script not loaded, injecting...');
+
+                    try {
+                        await chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            files: ['src/content/content.js']
+                        });
+
+                        // Wait a bit for the script to initialize
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        console.log('Content script injected successfully');
+                    } catch (injectErr) {
+                        console.error('Failed to inject content script:', injectErr);
+                        alert('Failed to inject recorder script. Please refresh the page and try again.');
+                        setRecordingUI(false);
+                        return;
+                    }
                 }
 
-                chrome.tabs.sendMessage(tabs[0].id, {
+                // Now send the start recording message
+                await chrome.tabs.sendMessage(tab.id, {
                     type: 'START_RECORDING',
                     pageName,
                     testName,
                     testCaseName
-                }).catch(err => {
-                    console.error('Failed to start recording:', err);
-                    alert('Please refresh the page and try again.');
-                    setRecordingUI(false);
                 });
-            });
+
+                console.log('Recording started successfully');
+            } catch (err) {
+                console.error('Failed to start recording:', err);
+                alert(`Failed to start recording: ${err.message}\n\nPlease:\n1. Refresh the page\n2. Try again\n3. Check that you're on a regular website (not chrome:// pages)`);
+                setRecordingUI(false);
+            }
         });
     }
 

@@ -71,7 +71,10 @@ if (window.hasRun) {
 
     // Listen for messages from popup
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.type === 'DETECT_ELEMENTS') {
+        if (message.type === 'PING') {
+            // Respond to ping to confirm content script is loaded
+            sendResponse({ status: 'ready' });
+        } else if (message.type === 'DETECT_ELEMENTS') {
             const elements = detectElements();
             sendResponse({ elements });
         } else if (message.type === 'START_RECORDING') {
