@@ -94,23 +94,34 @@
       <!-- Recorder Tab -->
       <div class="tab-content" id="recorder">
         <div class="recorder-controls">
-          <h2>Step Recorder</h2>
+          <h2>🎬 Step Recorder</h2>
+          <div class="info-box"
+            style="background: #eff6ff; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
+            <strong>📝 Instructions:</strong>
+            <ol style="margin: 8px 0 0 20px; padding: 0;">
+              <li>Select a Page Object and Test Suite below</li>
+              <li>Enter a Test Case name (or use existing one)</li>
+              <li>Click "Start Recording" and interact with your page</li>
+              <li>Click "Stop Recording" when done</li>
+              <li>Review generated code and click "Save to Project"</li>
+            </ol>
+          </div>
           <div class="recorder-settings">
             <label>
-              Page Object:
-              <select id="recorderPageSelect">
+              Page Object: <span style="color: red;">*</span>
+              <select id="recorderPageSelect" required>
                 <option value="">Select Page Object</option>
               </select>
             </label>
             <label>
-              Test Spec:
-              <select id="recorderTestSelect">
-                <option value="">Select Test Spec</option>
+              Test Suite: <span style="color: red;">*</span>
+              <select id="recorderTestSelect" required>
+                <option value="">Select Test Suite</option>
               </select>
             </label>
             <label>
-              Test Case:
-              <input type="text" id="recorderTestCase" placeholder="Test case name">
+              Test Case Name: <span style="color: red;">*</span>
+              <input type="text" id="recorderTestCase" placeholder="e.g. should login successfully" required>
             </label>
             <div class="recorder-options">
               <label>
@@ -134,19 +145,21 @@
             <button class="btn btn-info" id="replayBtn">▶ Replay</button>
             <button class="btn btn-warning" id="screenshotBtn">📷 Screenshot</button>
             <button class="btn btn-secondary" id="clearStepsBtn">🗑 Clear Steps</button>
-            <button class="btn btn-primary" id="generateCodeBtn" style="display:none;">💾 Generate & Save Code</button>
           </div>
           <div class="recording-status">
             Status: <span id="recordingStatus">Idle</span>
           </div>
         </div>
         <div class="recorded-steps" id="recordedSteps">
-          <h3>Recorded Steps</h3>
+          <h3>Recorded Steps (<span id="stepCount">0</span>)</h3>
           <ul id="stepsList"></ul>
         </div>
         <div class="generated-code">
-          <h3>Generated Code</h3>
-          <pre id="generatedCode">// Code will appear here...</pre>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3>Generated Code Preview</h3>
+            <button class="btn btn-primary" id="generateCodeBtn">💾 Save to Project</button>
+          </div>
+          <pre id="generatedCode">// Select Page Object and Test Suite above, then start recording...</pre>
           <button class="btn btn-secondary" id="copyCodeBtn">📋 Copy Code</button>
         </div>
       </div>

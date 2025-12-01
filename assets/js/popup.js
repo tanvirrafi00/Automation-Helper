@@ -749,59 +749,100 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             }
         });
 
-        // Show generate code button if steps exist
-        if (recordedSteps.length > 0) {
-            const generateBtn = document.getElementById('generateCodeBtn');
-            if (generateBtn) {
-                generateBtn.style.display = 'inline-flex';
-            }
-        }
+        // Generate code preview
+        generateCode();
     }
 
     async function saveGeneratedCode() {
-        if (!currentProject || recordedSteps.length === 0) {
-            alert('No steps to save');
+        console.log('saveGeneratedCode called');
+
+        if (!currentProject) {
+            alert('No project selected! Please create or select a project first.');
+            return;
+        }
+
+        if (recordedSteps.length === 0) {
+            alert('No steps recorded! Please record some steps first.');
             return;
         }
 
         const pageName = document.getElementById('recorderPageSelect').value;
         const testName = document.getElementById('recorderTestSelect').value;
-        const testCaseName = document.getElementById('recorderTestCase').value;
+        const testCaseName = document.getElementById('recorderTestCase').value.trim();
 
-        if (!pageName || !testName || !testCaseName) {
-            alert('Please ensure page object and test spec are selected');
+        // Validation
+        if (!pageName) {
+            alert('Please select a Page Object');
+            document.getElementById('recorderPageSelect').focus();
             return;
         }
 
-        // Add recorded steps to the test case
-        const testSpec = currentProject.tests[testName];
-        const existingCase = testSpec.testCases.find(tc => tc.name === testCaseName);
-
-        if (existingCase) {
-            existingCase.steps = recordedSteps;
-        } else {
-            testSpec.addTestCase(testCaseName, recordedSteps);
+        if (!testName) {
+            alert('Please select a Test Suite');
+            document.getElementById('recorderTestSelect').focus();
+            return;
         }
 
-        // Update the test spec in project
-        await projectManager.updateTestSpec(currentProject.id, testName, testSpec);
+        if (!testCaseName) {
+            alert('Please enter a Test Case name');
+            document.getElementById('recorderTestCase').focus();
+            return;
+        }
 
-        // Reload current project
-        await loadCurrentProject();
+        try {
+            console.log('Saving steps to:', { testName, testCaseName, stepCount: recordedSteps.length });
 
-        alert('Code saved successfully! Go to Export tab to download your project.');
+            // Get the test spec
+            const testSpec = currentProject.tests[testName];
+            if (!testSpec) {
+                alert(`Test suite "${testName}" not found!`);
+                return;
+            }
 
-        // Hide generate button
-        const generateBtn = document.getElementById('generateCodeBtn');
-        if (generateBtn) {
-            generateBtn.style.display = 'none';
+            // Check if test case already exists
+            const existingCaseIndex = testSpec.testCases.findIndex(tc => tc.name === testCaseName);
+
+            if (existingCaseIndex >= 0) {
+                // Update existing test case
+                if (confirm(`Test case "${testCaseName}" already exists. Replace it with new steps?`)) {
+                    testSpec.testCases[existingCaseIndex].steps = [...recordedSteps];
+                    testSpec.testCases[existingCaseIndex].updatedAt = Date.now();
+                } else {
+                    return;
+                }
+            } else {
+                // Add new test case
+                testSpec.addTestCase(testCaseName, [...recordedSteps]);
+            }
+
+            // Update the project
+            await projectManager.updateProject(currentProject.id, currentProject);
+
+            // Reload current project
+            await loadCurrentProject();
+
+            alert(`✅ Success! ${recordedSteps.length} steps saved to test case "${testCaseName}".\n\nYou can now:\n• View the code in the Tests tab\n• Run the test case\n• Export the complete project`);
+
+            // Clear steps after saving
+            clearSteps();
+        } catch (err) {
+            console.error('Failed to save code:', err);
+            alert('Failed to save code: ' + err.message);
         }
     }
 
     function clearSteps() {
         recordedSteps = [];
         document.getElementById('stepsList').innerHTML = '';
-        document.getElementById('generatedCode').textContent = '// Code will appear here...';
+        document.getElementById('generatedCode').textContent = '// Select Page Object and Test Suite above, then start recording...';
+        updateStepCount();
+    }
+
+    function updateStepCount() {
+        const countEl = document.getElementById('stepCount');
+        if (countEl) {
+            countEl.textContent = recordedSteps.length;
+        }
     }
 
     function generateCode() {
@@ -811,23 +852,38 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
         const pageName = document.getElementById('recorderPageSelect').value;
         const testName = document.getElementById('recorderTestSelect').value;
+        const testCaseName = document.getElementById('recorderTestCase').value.trim();
 
         const pageObject = currentProject.pages[pageName];
         const testSpec = currentProject.tests[testName];
 
-        if (!pageObject || !testSpec) return;
-
-        // Temporarily add recorded steps to test case for generation
-        // In a real app, we'd find the specific test case
-        const tempTestSpec = JSON.parse(JSON.stringify(testSpec));
-        if (tempTestSpec.testCases.length > 0) {
-            tempTestSpec.testCases[0].steps = recordedSteps;
+        if (!pageObject || !testSpec) {
+            document.getElementById('generatedCode').textContent = '// Please select both Page Object and Test Suite';
+            return;
         }
 
+        // Create a temporary test spec with the recorded steps
+        const tempTestSpec = JSON.parse(JSON.stringify(testSpec));
+
+        // Find or create the test case
+        let targetCase = tempTestSpec.testCases.find(tc => tc.name === testCaseName);
+        if (!targetCase) {
+            targetCase = {
+                name: testCaseName || 'Recorded Test',
+                steps: recordedSteps,
+                createdAt: Date.now()
+            };
+            tempTestSpec.testCases = [targetCase];
+        } else {
+            targetCase.steps = recordedSteps;
+        }
+
+        // Generate code using the project's tool and language
         const generator = new CodeGenerator(currentProject.tool, currentProject.language);
         const code = generator.generateTestSpec(tempTestSpec, pageObject);
 
-        document.getElementById('generatedCode').textContent = code;
+        document.getElementById('generatedCode').textContent = code || '// No code generated';
+        console.log(`Generated code for ${currentProject.tool}/${currentProject.language}:`, code ? 'Success' : 'Failed');
     }
 
     // Listen for recorded steps from content script
@@ -849,6 +905,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
             recordedSteps.push(step);
             addStepToList(step);
+            updateStepCount();
             generateCode();
         }
     });
