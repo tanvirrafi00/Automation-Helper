@@ -178,12 +178,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let casesHtml = '';
             if (test.testCases && test.testCases.length > 0) {
-                casesHtml = '<div class="test-cases-list" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">';
+                casesHtml = '<div class="test-cases-list">';
                 test.testCases.forEach(tc => {
                     casesHtml += `
-                        <div class="test-case-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px;">
+                        <div class="test-case-item">
                             <span>🔹 ${tc.name}</span>
-                            <button class="btn btn-sm btn-success" onclick="runTestCase('${test.name}', '${tc.name}')" title="Run Test Case">▶</button>
+                            <button class="btn btn-sm btn-success" onclick="runTestCase('${test.name}', '${tc.name}')" title="Run Test Case">▶ Run</button>
                         </div>
                     `;
                 });

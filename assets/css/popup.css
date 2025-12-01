@@ -780,6 +780,40 @@ body.dark-mode .generated-code pre {
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
+/* Test Case List */
+.test-cases-list {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.test-case-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.test-case-item:hover {
+    background: var(--light-gray);
+}
+
+.test-case-item span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 11px;
+    height: 24px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;
@@ -791,10 +825,104 @@ body.dark-mode .generated-code pre {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--gray);
+    background: #cbd5e1;
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--dark);
+    background: #94a3b8;
+}
+
+body.dark-mode ::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+
+body.dark-mode ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+
+    .recorder-buttons {
+        flex-wrap: wrap;
+    }
+
+    .export-actions {
+        flex-direction: column;
+    }
+
+    .tab-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .search-input {
+        width: 100%;
+    }
+
+    .list-item-actions {
+        flex-wrap: wrap;
+    }
+}
+
+/* Recorder Options */
+.recorder-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media (max-width: 500px) {
+    .recorder-options {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Button improvements */
+.btn {
+    white-space: nowrap;
+}
+
+.recorder-buttons {
+    flex-wrap: wrap;
+}
+
+/* List item actions responsive */
+.list-item-actions .btn {
+    font-size: 12px;
+    padding: 6px 12px;
+}
+
+/* Modal responsive */
+@media (max-width: 850px) {
+    .large-modal {
+        width: 95vw;
+        height: 90vh;
+    }
+}
+
+/* Code block improvements */
+.code-block {
+    tab-size: 2;
+    white-space: pre;
+    word-wrap: normal;
+}
+
+/* Smooth transitions */
+* {
+    transition-property: background-color, border-color, color, box-shadow;
+    transition-duration: 0.2s;
+    transition-timing-function: ease-in-out;
+}
+
+button,
+a,
+.tab-btn,
+.list-item {
+    transition-property: all;
 }
