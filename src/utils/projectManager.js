@@ -196,25 +196,54 @@ class ProjectManager {
         Object.values(project.pages).forEach(page => {
             const ext = this.getFileExtension(project.language);
             const code = generator.generatePageObject(page);
-            files[`pages/${page.name}${ext}`] = code;
+
+            if (code && code.trim()) {
+                files[`pages/${page.name}${ext}`] = code;
+                console.log(`Generated page object: pages/${page.name}${ext}`);
+            } else {
+                console.warn(`Empty code for page object: ${page.name}`);
+                // Add a placeholder comment so file isn't empty
+                files[`pages/${page.name}${ext}`] = `// Page Object: ${page.name}\n// No elements defined yet\n`;
+            }
         });
 
         // Generate test specs
         Object.values(project.tests).forEach(test => {
             const ext = this.getFileExtension(project.language);
             const page = project.pages[test.pageName];
+
+            if (!page) {
+                console.warn(`Page object not found for test: ${test.name}`);
+                return;
+            }
+
             const code = generator.generateTestSpec(test, page);
-            files[`tests/${test.name}${ext}`] = code;
+
+            if (code && code.trim()) {
+                files[`tests/${test.name}${ext}`] = code;
+                console.log(`Generated test spec: tests/${test.name}${ext}`);
+            } else {
+                console.warn(`Empty code for test spec: ${test.name}`);
+                // Add a placeholder comment so file isn't empty
+                files[`tests/${test.name}${ext}`] = `// Test Spec: ${test.name}\n// No test cases defined yet\n`;
+            }
         });
 
         // Generate config file
-        files[project.config] = this.generateConfigFile(project);
+        const configContent = this.generateConfigFile(project);
+        if (configContent) {
+            files[project.config] = configContent;
+        }
 
         // Generate environments file
         files['environments.json'] = JSON.stringify(project.environments || {}, null, 2);
 
         // Generate package.json or requirements.txt
-        files[this.getDependencyFile(project)] = this.generateDependencies(project);
+        const depsFile = this.getDependencyFile(project);
+        const depsContent = this.generateDependencies(project);
+        if (depsContent) {
+            files[depsFile] = depsContent;
+        }
 
         // Generate README
         files['README.md'] = this.generateReadme(project);
