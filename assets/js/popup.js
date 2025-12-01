@@ -949,9 +949,64 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
             recordedSteps.push(step);
             addStepToList(step);
+
+            // Auto-populate Page Object with elements from recorded steps
+            autoPopulatePageObject(step);
+
             generateCode();
         }
     });
+
+    // Auto-populate Page Object with elements from recorded steps
+    async function autoPopulatePageObject(step) {
+        if (!currentProject) return;
+
+        const pageName = document.getElementById('recorderPageSelect').value;
+        if (!pageName) return;
+
+        const pageObject = currentProject.pages[pageName];
+        if (!pageObject) return;
+
+        // Only add elements for actions that interact with elements
+        if (!step.selector || !step.elementName) return;
+
+        // Check if element already exists
+        if (pageObject.elements[step.elementName]) return;
+
+        // Determine element type from action
+        let elementType = 'button';
+        if (step.action === 'fill') {
+            elementType = 'input';
+        } else if (step.action === 'select') {
+            elementType = 'select';
+        } else if (step.action === 'click') {
+            // Try to guess from selector
+            if (step.selector.includes('input') || step.selector.includes('textarea')) {
+                elementType = 'input';
+            } else if (step.selector.includes('select')) {
+                elementType = 'select';
+            } else if (step.selector.includes('a') || step.selector.includes('link')) {
+                elementType = 'link';
+            }
+        }
+
+        // Add element to page object
+        pageObject.elements[step.elementName] = {
+            selector: step.selector,
+            type: elementType
+        };
+
+        console.log(`✅ Auto-added element to ${pageName}:`, step.elementName, step.selector);
+
+        // Update project
+        try {
+            await projectManager.updateProject(currentProject.id, currentProject);
+            // Refresh the UI
+            await loadCurrentProject();
+        } catch (err) {
+            console.error('Error updating page object:', err);
+        }
+    }
 
     // Listen for replay progress
     chrome.runtime.onMessage.addListener((message) => {
