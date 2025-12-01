@@ -749,15 +749,21 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             }
         });
 
-        // Generate code preview
-        generateCode();
+        // Show generate code button if steps exist
+        if (recordedSteps.length > 0) {
+            const generateBtn = document.getElementById('generateCodeBtn');
+            if (generateBtn) {
+                generateBtn.style.display = 'inline-flex';
+            }
+        }
     }
 
     async function saveGeneratedCode() {
         console.log('saveGeneratedCode called');
+        console.log('Recorded steps:', recordedSteps.length);
 
         if (!currentProject) {
-            alert('No project selected! Please create or select a project first.');
+            alert('Please create or select a project first!');
             return;
         }
 
@@ -768,122 +774,160 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
         const pageName = document.getElementById('recorderPageSelect').value;
         const testName = document.getElementById('recorderTestSelect').value;
-        const testCaseName = document.getElementById('recorderTestCase').value.trim();
+        const testCaseName = document.getElementById('recorderTestCase').value;
 
-        // Validation
+        console.log('Page:', pageName, 'Test:', testName, 'Case:', testCaseName);
+
         if (!pageName) {
-            alert('Please select a Page Object');
-            document.getElementById('recorderPageSelect').focus();
+            alert('Please select a Page Object from the dropdown!');
             return;
         }
 
         if (!testName) {
-            alert('Please select a Test Suite');
-            document.getElementById('recorderTestSelect').focus();
+            alert('Please select a Test Spec from the dropdown!');
             return;
         }
 
-        if (!testCaseName) {
-            alert('Please enter a Test Case name');
-            document.getElementById('recorderTestCase').focus();
+        if (!testCaseName || testCaseName.trim() === '') {
+            alert('Please enter a Test Case name!');
             return;
         }
 
         try {
-            console.log('Saving steps to:', { testName, testCaseName, stepCount: recordedSteps.length });
-
             // Get the test spec
             const testSpec = currentProject.tests[testName];
             if (!testSpec) {
-                alert(`Test suite "${testName}" not found!`);
+                alert(`Test Spec "${testName}" not found!`);
                 return;
             }
 
-            // Check if test case already exists
-            const existingCaseIndex = testSpec.testCases.findIndex(tc => tc.name === testCaseName);
+            console.log('Test Spec before update:', JSON.stringify(testSpec, null, 2));
 
-            if (existingCaseIndex >= 0) {
+            // Find existing test case or add new one
+            const existingCase = testSpec.testCases.find(tc => tc.name === testCaseName);
+
+            if (existingCase) {
                 // Update existing test case
-                if (confirm(`Test case "${testCaseName}" already exists. Replace it with new steps?`)) {
-                    testSpec.testCases[existingCaseIndex].steps = [...recordedSteps];
-                    testSpec.testCases[existingCaseIndex].updatedAt = Date.now();
-                } else {
-                    return;
-                }
+                existingCase.steps = recordedSteps;
+                existingCase.updatedAt = Date.now();
+                console.log('Updated existing test case:', testCaseName);
             } else {
                 // Add new test case
-                testSpec.addTestCase(testCaseName, [...recordedSteps]);
+                testSpec.testCases.push({
+                    name: testCaseName,
+                    steps: recordedSteps,
+                    data: null,
+                    createdAt: Date.now()
+                });
+                console.log('Added new test case:', testCaseName);
             }
 
-            // Update the project
+            // Update the test spec in project
             await projectManager.updateProject(currentProject.id, currentProject);
+
+            console.log('Project updated successfully');
 
             // Reload current project
             await loadCurrentProject();
 
-            alert(`✅ Success! ${recordedSteps.length} steps saved to test case "${testCaseName}".\n\nYou can now:\n• View the code in the Tests tab\n• Run the test case\n• Export the complete project`);
+            alert(`✅ Success! Test case "${testCaseName}" saved with ${recordedSteps.length} steps.\n\nYou can now:\n• View the code in the Tests tab\n• Export your project\n• Run the test`);
 
-            // Clear steps after saving
-            clearSteps();
+            // Hide generate button
+            const generateBtn = document.getElementById('generateCodeBtn');
+            if (generateBtn) {
+                generateBtn.style.display = 'none';
+            }
+
+            // Clear the recorder for next test
+            // Uncomment if you want to auto-clear after saving:
+            // clearSteps();
         } catch (err) {
-            console.error('Failed to save code:', err);
-            alert('Failed to save code: ' + err.message);
+            console.error('Error saving code:', err);
+            alert(`Error saving code: ${err.message}\n\nPlease check the console for details.`);
         }
     }
 
     function clearSteps() {
         recordedSteps = [];
         document.getElementById('stepsList').innerHTML = '';
-        document.getElementById('generatedCode').textContent = '// Select Page Object and Test Suite above, then start recording...';
-        updateStepCount();
-    }
-
-    function updateStepCount() {
-        const countEl = document.getElementById('stepCount');
-        if (countEl) {
-            countEl.textContent = recordedSteps.length;
-        }
+        document.getElementById('generatedCode').textContent = '// Code will appear here...';
     }
 
     function generateCode() {
-        if (!currentProject || recordedSteps.length === 0) {
+        const codeDisplay = document.getElementById('generatedCode');
+
+        if (!currentProject) {
+            codeDisplay.textContent = '// Please create or select a project first';
+            return;
+        }
+
+        if (recordedSteps.length === 0) {
+            codeDisplay.textContent = '// Start recording to see generated code...';
             return;
         }
 
         const pageName = document.getElementById('recorderPageSelect').value;
         const testName = document.getElementById('recorderTestSelect').value;
-        const testCaseName = document.getElementById('recorderTestCase').value.trim();
+
+        // If page/test not selected, show generic step code
+        if (!pageName || !testName) {
+            let code = `// ${recordedSteps.length} steps recorded\n`;
+            code += `// Please select Page Object and Test Spec to see full test code\n\n`;
+            code += `// Recorded steps:\n`;
+            recordedSteps.forEach((step, i) => {
+                code += `// ${i + 1}. ${step.action.toUpperCase()}`;
+                if (step.selector) code += ` → ${step.selector}`;
+                if (step.value) code += ` = "${step.value}"`;
+                code += `\n`;
+            });
+            codeDisplay.textContent = code;
+            return;
+        }
 
         const pageObject = currentProject.pages[pageName];
         const testSpec = currentProject.tests[testName];
 
-        if (!pageObject || !testSpec) {
-            document.getElementById('generatedCode').textContent = '// Please select both Page Object and Test Suite';
+        if (!pageObject) {
+            codeDisplay.textContent = `// Error: Page Object "${pageName}" not found\n// Please select a valid Page Object`;
             return;
         }
 
-        // Create a temporary test spec with the recorded steps
-        const tempTestSpec = JSON.parse(JSON.stringify(testSpec));
-
-        // Find or create the test case
-        let targetCase = tempTestSpec.testCases.find(tc => tc.name === testCaseName);
-        if (!targetCase) {
-            targetCase = {
-                name: testCaseName || 'Recorded Test',
-                steps: recordedSteps,
-                createdAt: Date.now()
-            };
-            tempTestSpec.testCases = [targetCase];
-        } else {
-            targetCase.steps = recordedSteps;
+        if (!testSpec) {
+            codeDisplay.textContent = `// Error: Test Spec "${testName}" not found\n// Please select a valid Test Spec`;
+            return;
         }
 
-        // Generate code using the project's tool and language
+        // Generate full test code
+        const testCaseName = document.getElementById('recorderTestCase').value || 'Recorded Test';
+
+        // Create a temporary test spec with recorded steps
+        const tempTestSpec = JSON.parse(JSON.stringify(testSpec));
+
+        // Find or create test case
+        let targetCase = tempTestSpec.testCases.find(tc => tc.name === testCaseName);
+        if (!targetCase && tempTestSpec.testCases.length > 0) {
+            targetCase = tempTestSpec.testCases[0];
+        }
+
+        if (targetCase) {
+            targetCase.steps = recordedSteps;
+        } else {
+            // Create a new test case if none exist
+            tempTestSpec.testCases = [{
+                name: testCaseName,
+                steps: recordedSteps,
+                createdAt: Date.now()
+            }];
+        }
+
         const generator = new CodeGenerator(currentProject.tool, currentProject.language);
         const code = generator.generateTestSpec(tempTestSpec, pageObject);
 
-        document.getElementById('generatedCode').textContent = code || '// No code generated';
-        console.log(`Generated code for ${currentProject.tool}/${currentProject.language}:`, code ? 'Success' : 'Failed');
+        if (!code || code.trim() === '') {
+            codeDisplay.textContent = '// Error generating code\n// Please check your project configuration';
+        } else {
+            codeDisplay.textContent = code;
+        }
     }
 
     // Listen for recorded steps from content script
@@ -905,7 +949,6 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
             recordedSteps.push(step);
             addStepToList(step);
-            updateStepCount();
             generateCode();
         }
     });
