@@ -249,20 +249,37 @@
   <div class="modal" id="newTestModal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Create Test Specification</h2>
+        <h2>Add Test Case</h2>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <label>
-          Test Name:
-          <input type="text" id="testName" placeholder="LoginTest">
-        </label>
-        <label>
-          Page Object:
-          <select id="testPageObject">
-            <option value="">Select Page Object</option>
+          Action:
+          <select id="testAction">
+            <option value="new">Create New Test Suite</option>
+            <option value="existing">Add to Existing Suite</option>
           </select>
         </label>
+        <div id="newSuiteFields">
+          <label>
+            Test Suite Name:
+            <input type="text" id="testName" placeholder="LoginTest">
+          </label>
+          <label>
+            Page Object:
+            <select id="testPageObject">
+              <option value="">Select Page Object</option>
+            </select>
+          </label>
+        </div>
+        <div id="existingSuiteFields" style="display: none;">
+          <label>
+            Select Test Suite:
+            <select id="existingTestSuite">
+              <option value="">Select Suite</option>
+            </select>
+          </label>
+        </div>
         <label>
           Test Case Name:
           <input type="text" id="testCaseName" placeholder="should login successfully">
@@ -274,7 +291,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary modal-cancel">Cancel</button>
-        <button class="btn btn-primary" id="createTestSpecBtn">Create Test</button>
+        <button class="btn btn-primary" id="createTestSpecBtn">Add Test Case</button>
       </div>
     </div>
   </div>

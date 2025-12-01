@@ -150,8 +150,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="list-item-header">
           <span class="list-item-title">${page.name}</span>
           <div class="list-item-actions">
-            <button class="btn btn-secondary" onclick="viewPageObject('${page.name}')">View Code</button>
-            <button class="btn btn-danger" onclick="deletePageObject('${page.name}')">Delete</button>
+            <button class="btn btn-secondary view-page-btn" data-page-name="${page.name}">View Code</button>
+            <button class="btn btn-danger delete-page-btn" data-page-name="${page.name}">Delete</button>
           </div>
         </div>
         <div class="list-item-meta">
@@ -189,9 +189,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <span class="test-case-meta">${stepCount} steps</span>
                             </div>
                             <div class="test-case-actions">
-                                <button class="btn btn-sm btn-secondary" onclick="viewTestCase('${test.name}', ${index})" title="View Code">👁️ View</button>
-                                <button class="btn btn-sm btn-success" onclick="runTestCase('${test.name}', '${tc.name}')" title="Run Test Case">▶ Run</button>
-                                <button class="btn btn-sm btn-danger" onclick="deleteTestCase('${test.name}', ${index})" title="Delete">×</button>
+                                <button class="btn btn-sm btn-secondary view-case-btn" data-test-name="${test.name}" data-case-index="${index}" title="View Code">👁️ View</button>
+                                <button class="btn btn-sm btn-success run-case-btn" data-test-name="${test.name}" data-case-name="${tc.name}" title="Run Test Case">▶ Run</button>
+                                <button class="btn btn-sm btn-danger delete-case-btn" data-test-name="${test.name}" data-case-index="${index}" title="Delete">×</button>
                             </div>
                         </div>
                     `;
@@ -209,8 +209,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span class="suite-badge">${test.testCases.length} test case${test.testCases.length !== 1 ? 's' : ''}</span>
           </div>
           <div class="list-item-actions">
-            <button class="btn btn-secondary" onclick="viewTest('${test.name}')">View All Code</button>
-            <button class="btn btn-danger" onclick="deleteTest('${test.name}')">Delete Suite</button>
+            <button class="btn btn-secondary view-test-btn" data-test-name="${test.name}">View All Code</button>
+            <button class="btn btn-danger delete-test-btn" data-test-name="${test.name}">Delete Suite</button>
           </div>
         </div>
         <div class="list-item-meta">
@@ -394,7 +394,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 alert('Please select a project first');
                 return;
             }
-            populatePageObjectSelect();
+            populateTestModal();
             openModal(newTestModal);
         });
 
@@ -403,48 +403,101 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 alert('Please select a project first');
                 return;
             }
-            populatePageObjectSelect();
+            populateTestModal();
             openModal(newTestModal);
         });
 
-        function populatePageObjectSelect() {
-            const select = document.getElementById('testPageObject');
-            select.innerHTML = '<option value="">Select Page Object</option>';
+        // Toggle between new suite and existing suite fields
+        document.getElementById('testAction')?.addEventListener('change', (e) => {
+            const newFields = document.getElementById('newSuiteFields');
+            const existingFields = document.getElementById('existingSuiteFields');
+
+            if (e.target.value === 'new') {
+                newFields.style.display = 'block';
+                existingFields.style.display = 'none';
+            } else {
+                newFields.style.display = 'none';
+                existingFields.style.display = 'block';
+            }
+        });
+
+        function populateTestModal() {
+            // Populate page object select
+            const pageSelect = document.getElementById('testPageObject');
+            pageSelect.innerHTML = '<option value="">Select Page Object</option>';
             Object.keys(currentProject.pages).forEach(pageName => {
                 const option = document.createElement('option');
                 option.value = pageName;
                 option.textContent = pageName;
-                select.appendChild(option);
+                pageSelect.appendChild(option);
+            });
+
+            // Populate existing test suites select
+            const suiteSelect = document.getElementById('existingTestSuite');
+            suiteSelect.innerHTML = '<option value="">Select Suite</option>';
+            Object.keys(currentProject.tests).forEach(testName => {
+                const option = document.createElement('option');
+                option.value = testName;
+                option.textContent = testName;
+                suiteSelect.appendChild(option);
             });
         }
 
-        // Create test spec
+        // Create test spec or add to existing
         document.getElementById('createTestSpecBtn').addEventListener('click', async () => {
-            const name = document.getElementById('testName').value;
-            const pageName = document.getElementById('testPageObject').value;
+            const action = document.getElementById('testAction').value;
             const testCaseName = document.getElementById('testCaseName').value;
             const isDataDriven = document.getElementById('isDataDriven').checked;
 
-            if (!name || !pageName) {
-                alert('Please fill in all required fields');
+            if (!testCaseName) {
+                alert('Please enter a test case name');
                 return;
             }
 
             try {
-                const testSpec = new TestSpec(name, pageName, currentProject.tool, currentProject.language);
+                if (action === 'new') {
+                    // Create new test suite
+                    const name = document.getElementById('testName').value;
+                    const pageName = document.getElementById('testPageObject').value;
 
-                if (testCaseName) {
+                    if (!name || !pageName) {
+                        alert('Please fill in all required fields');
+                        return;
+                    }
+
+                    const testSpec = new TestSpec(name, pageName, currentProject.tool, currentProject.language);
                     const data = isDataDriven ? [{ username: 'test', password: '123' }] : null;
                     testSpec.addTestCase(testCaseName, [], data);
+
+                    await projectManager.addTestSpec(currentProject.id, testSpec);
+                    alert('Test suite created successfully!');
+                } else {
+                    // Add to existing suite
+                    const suiteName = document.getElementById('existingTestSuite').value;
+
+                    if (!suiteName) {
+                        alert('Please select a test suite');
+                        return;
+                    }
+
+                    const testSpec = currentProject.tests[suiteName];
+                    if (!testSpec) {
+                        alert('Test suite not found!');
+                        return;
+                    }
+
+                    const data = isDataDriven ? [{ username: 'test', password: '123' }] : null;
+                    testSpec.addTestCase(testCaseName, [], data);
+
+                    await projectManager.updateProject(currentProject.id, currentProject);
+                    alert('Test case added successfully!');
                 }
 
-                await projectManager.addTestSpec(currentProject.id, testSpec);
                 closeModal(newTestModal);
                 await loadCurrentProject();
-                alert('Test spec created successfully!');
             } catch (err) {
-                console.error('Failed to create test spec:', err);
-                alert('Failed to create test spec. Please try again.');
+                console.error('Failed to create/update test:', err);
+                alert('Failed to create/update test. Please try again.');
             }
         });
 
@@ -591,6 +644,44 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             if (e.altKey && e.key === 'r') {
                 if (isRecording) stopRecording();
                 else startRecording();
+            }
+        });
+
+        // Event delegation for dynamically created buttons
+        document.addEventListener('click', (e) => {
+            // Page Object buttons
+            if (e.target.classList.contains('view-page-btn')) {
+                const pageName = e.target.dataset.pageName;
+                window.viewPageObject(pageName);
+            }
+            else if (e.target.classList.contains('delete-page-btn')) {
+                const pageName = e.target.dataset.pageName;
+                window.deletePageObject(pageName);
+            }
+            // Test Suite buttons
+            else if (e.target.classList.contains('view-test-btn')) {
+                const testName = e.target.dataset.testName;
+                window.viewTest(testName);
+            }
+            else if (e.target.classList.contains('delete-test-btn')) {
+                const testName = e.target.dataset.testName;
+                window.deleteTest(testName);
+            }
+            // Test Case buttons
+            else if (e.target.classList.contains('view-case-btn')) {
+                const testName = e.target.dataset.testName;
+                const caseIndex = parseInt(e.target.dataset.caseIndex);
+                window.viewTestCase(testName, caseIndex);
+            }
+            else if (e.target.classList.contains('run-case-btn')) {
+                const testName = e.target.dataset.testName;
+                const caseName = e.target.dataset.caseName;
+                window.runTestCase(testName, caseName);
+            }
+            else if (e.target.classList.contains('delete-case-btn')) {
+                const testName = e.target.dataset.testName;
+                const caseIndex = parseInt(e.target.dataset.caseIndex);
+                window.deleteTestCase(testName, caseIndex);
             }
         });
     }
