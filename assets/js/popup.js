@@ -824,14 +824,14 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         generateCode();
     }
 
-    // Modal helpers
-    function openModal(modal) {
-        modal.classList.add('active');
-    }
+    // Modal helpers - make globally accessible
+    window.openModal = function (modal) {
+        if (modal) modal.classList.add('active');
+    };
 
-    function closeModal(modal) {
-        modal.classList.remove('active');
-    }
+    window.closeModal = function (modal) {
+        if (modal) modal.classList.remove('active');
+    };
 
     // Global functions for list item actions
     window.viewPageObject = async (name) => {
@@ -912,16 +912,30 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         });
     };
 
-    function showCodeViewer(title, code) {
+    // Make showCodeViewer globally accessible
+    window.showCodeViewer = function (title, code) {
         const modal = document.getElementById('codeViewerModal');
-        document.getElementById('codeViewerTitle').textContent = title;
-        document.getElementById('codeViewerContent').textContent = code;
-        openModal(modal);
-    }
+        if (!modal) {
+            console.error('Code viewer modal not found');
+            return;
+        }
 
-    document.getElementById('copyViewerCodeBtn').addEventListener('click', () => {
-        const code = document.getElementById('codeViewerContent').textContent;
-        navigator.clipboard.writeText(code);
-        alert('Code copied to clipboard!');
-    });
+        const titleEl = document.getElementById('codeViewerTitle');
+        const contentEl = document.getElementById('codeViewerContent');
+
+        if (titleEl) titleEl.textContent = title;
+        if (contentEl) contentEl.textContent = code;
+
+        openModal(modal);
+    };
+
+    // Copy code button
+    const copyViewerBtn = document.getElementById('copyViewerCodeBtn');
+    if (copyViewerBtn) {
+        copyViewerBtn.addEventListener('click', () => {
+            const code = document.getElementById('codeViewerContent').textContent;
+            navigator.clipboard.writeText(code);
+            alert('Code copied to clipboard!');
+        });
+    }
 });
