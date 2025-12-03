@@ -914,15 +914,23 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 return;
             }
 
+            // Ensure testCases array exists
+            if (!testSpec.testCases) {
+                testSpec.testCases = [];
+            }
+
             console.log('Test Spec before update:', JSON.stringify(testSpec, null, 2));
 
             // Find existing test case or add new one
-            const existingCase = testSpec.testCases.find(tc => tc.name === testCaseName);
+            const existingCaseIndex = testSpec.testCases.findIndex(tc => tc.name === testCaseName);
 
-            if (existingCase) {
+            if (existingCaseIndex !== -1) {
                 // Update existing test case
-                existingCase.steps = recordedSteps;
-                existingCase.updatedAt = Date.now();
+                testSpec.testCases[existingCaseIndex] = {
+                    ...testSpec.testCases[existingCaseIndex],
+                    steps: recordedSteps,
+                    updatedAt: Date.now()
+                };
                 console.log('Updated existing test case:', testCaseName);
             } else {
                 // Add new test case
@@ -935,12 +943,15 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 console.log('Added new test case:', testCaseName);
             }
 
-            // Update the test spec in project
-            await projectManager.updateProject(currentProject.id, currentProject);
+            // Update ONLY the test spec using projectManager
+            // This is safer than updating the whole project
+            await projectManager.updateTestSpec(currentProject.id, testName, {
+                testCases: testSpec.testCases
+            });
 
-            console.log('Project updated successfully');
+            console.log('Test Spec updated successfully');
 
-            // Reload current project
+            // Reload current project to get fresh state
             await loadCurrentProject();
 
             alert(`✅ Success! Test case "${testCaseName}" saved with ${recordedSteps.length} steps.\n\nYou can now:\n• View the code in the Tests tab\n• Export your project\n• Run the test`);
@@ -956,7 +967,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             // clearSteps();
         } catch (err) {
             console.error('Error saving code:', err);
-            alert(`Error saving code: ${err.message}\n\nPlease check the console for details.`);
+            alert(`Failed to save test case: ${err.message}\n\nPlease check the console for details.`);
         }
     }
 
