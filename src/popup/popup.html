@@ -60,6 +60,37 @@
           <p><strong>Last Updated:</strong> <span id="projectUpdated">-</span></p>
         </div>
 
+        <div class="workflow-guide"
+          style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin: 20px 0;">
+          <h3 style="margin: 0 0 12px 0; font-size: 18px;">🚀 Quick Start Workflow</h3>
+          <div style="display: grid; gap: 12px;">
+            <div
+              style="background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #fbbf24;">
+              <strong>Step 1: Navigate to Your Page</strong>
+              <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Open the webpage you want to test (e.g.,
+                login page, dashboard)</p>
+            </div>
+            <div
+              style="background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #10b981;">
+              <strong>Step 2: Create Page Object</strong>
+              <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Click "Create Page Object" → Enable
+                auto-detect → Elements captured automatically!</p>
+            </div>
+            <div
+              style="background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #3b82f6;">
+              <strong>Step 3: Create Test Suite</strong>
+              <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Go to Tests tab → Create test suite → Select
+                your Page Object</p>
+            </div>
+            <div
+              style="background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">
+              <strong>Step 4: Record & Generate</strong>
+              <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Recorder tab → Select Page & Test → Record
+                interactions → Save code!</p>
+            </div>
+          </div>
+        </div>
+
         <div class="quick-actions">
           <button class="btn btn-secondary" id="createPageObjectBtn">Create Page Object</button>
           <button class="btn btn-secondary" id="createTestBtn">Create Test</button>
@@ -228,17 +259,36 @@
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
+        <div class="workflow-instructions"
+          style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+          <strong>📋 Recommended Workflow:</strong>
+          <ol style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px;">
+            <li>Navigate to the page you want to test (e.g., login page)</li>
+            <li>Enter the page name and URL below</li>
+            <li>Check "Auto-detect elements" to capture elements from current page</li>
+            <li>Click "Create Page Object"</li>
+            <li>Elements will be automatically captured and added!</li>
+          </ol>
+        </div>
         <label>
-          Page Name:
-          <input type="text" id="pageName" placeholder="LoginPage">
+          Page Name: <span style="color: red;">*</span>
+          <input type="text" id="pageName" placeholder="e.g., LoginPage, HomePage" required>
+          <small style="display: block; color: #666; margin-top: 4px;">Use PascalCase (e.g., LoginPage,
+            DashboardPage)</small>
         </label>
         <label>
-          Page URL:
-          <input type="text" id="pageUrl" placeholder="https://example.com/login">
+          Page URL: <span style="color: red;">*</span>
+          <input type="text" id="pageUrl" placeholder="https://example.com/login" required>
+          <small style="display: block; color: #666; margin-top: 4px;">The URL of the page you're testing</small>
         </label>
-        <div class="checkbox-group">
-          <input type="checkbox" id="autoDetectElements">
-          <label for="autoDetectElements">Auto-detect elements on current page</label>
+        <div class="checkbox-group" style="margin-top: 12px; padding: 12px; background: #f9fafb; border-radius: 6px;">
+          <input type="checkbox" id="autoDetectElements" checked>
+          <label for="autoDetectElements" style="font-weight: 600;">
+            🔍 Auto-detect elements on current page
+          </label>
+          <p style="margin: 8px 0 0 24px; font-size: 12px; color: #666;">
+            Automatically capture interactive elements (inputs, buttons, links) from the active tab
+          </p>
         </div>
       </div>
       <div class="modal-footer">

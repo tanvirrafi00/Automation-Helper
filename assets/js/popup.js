@@ -334,22 +334,27 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         });
 
         // Add page object button
-        document.getElementById('addPageObjectBtn').addEventListener('click', () => {
+        const openPageObjectModal = () => {
             if (!currentProject) {
                 alert('Please select a project first');
                 return;
             }
+            // Auto-fill URL from current tab
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs.length > 0) {
+                    const urlInput = document.getElementById('pageUrl');
+                    if (urlInput) {
+                        urlInput.value = tabs[0].url;
+                    }
+                }
+            });
             openModal(newPageObjectModal);
-        });
+        };
 
-        document.getElementById('createPageObjectBtn').addEventListener('click', () => {
-            if (!currentProject) {
-                alert('Please select a project first');
-                return;
-            }
-            openModal(newPageObjectModal);
-        });
+        document.getElementById('addPageObjectBtn').addEventListener('click', openPageObjectModal);
+        document.getElementById('createPageObjectBtn').addEventListener('click', openPageObjectModal);
 
+        // Create page object
         // Create page object
         document.getElementById('createPageBtn').addEventListener('click', async () => {
             const name = document.getElementById('pageName').value;
@@ -365,15 +370,31 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 const pageObject = new PageObject(name, url, currentProject.tool, currentProject.language);
 
                 if (autoDetect) {
-                    // Send message to content script to detect elements
-                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                        if (tabs.length === 0) return;
-                        chrome.tabs.sendMessage(tabs[0].id, { type: 'DETECT_ELEMENTS' }, (response) => {
-                            if (response && response.elements) {
-                                response.elements.forEach(el => {
-                                    pageObject.addElement(el.name, el.selector, el.type);
-                                });
+                    // Wait for element detection
+                    await new Promise((resolve) => {
+                        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                            if (tabs.length === 0) {
+                                resolve();
+                                return;
                             }
+
+                            // Check if we can inject script first (in case it's not loaded)
+                            // We'll try to send message, if it fails, we assume script isn't there
+                            chrome.tabs.sendMessage(tabs[0].id, { type: 'DETECT_ELEMENTS' }, (response) => {
+                                if (chrome.runtime.lastError) {
+                                    console.log('Content script not ready for detection, skipping auto-detect');
+                                    resolve();
+                                    return;
+                                }
+
+                                if (response && response.elements) {
+                                    console.log('Detected elements:', response.elements.length);
+                                    response.elements.forEach(el => {
+                                        pageObject.addElement(el.name, el.selector, el.type);
+                                    });
+                                }
+                                resolve();
+                            });
                         });
                     });
                 }
