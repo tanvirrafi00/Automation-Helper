@@ -175,26 +175,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         const confirmScan = confirm(`Scan current page to add elements to "${pageName}"?\n\nMake sure you are on the correct page: ${pageObject.url}`);
         if (!confirmScan) return;
 
+        // Find the button to update its text
+        const btn = document.querySelector(`.scan-page-btn[data-page-name="${pageName}"]`);
+        const originalText = btn ? btn.innerHTML : '🔍 Scan';
+        if (btn) {
+            btn.innerHTML = '⏳ Scanning...';
+            btn.disabled = true;
+        }
+
         try {
             // Check content script
             const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tabs.length === 0) return;
+            if (tabs.length === 0) {
+                alert('No active tab found.');
+                if (btn) {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+                return;
+            }
 
             const tab = tabs[0];
 
             // Inject if needed
             try {
                 await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
-            } catch {
+            } catch (e) {
+                console.log('Content script not ready, injecting...', e);
                 await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     files: ['src/content/content.js']
                 });
-                await new Promise(r => setTimeout(r, 500));
+                await new Promise(r => setTimeout(r, 1000)); // Wait longer for init
             }
 
             // Detect
             chrome.tabs.sendMessage(tab.id, { type: 'DETECT_ELEMENTS' }, async (response) => {
+                if (chrome.runtime.lastError) {
+                    console.error('Runtime error:', chrome.runtime.lastError);
+                    alert('Failed to communicate with page. Please refresh the page and try again.');
+                    if (btn) {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }
+                    return;
+                }
+
                 if (response && response.elements) {
                     let addedCount = 0;
                     response.elements.forEach(el => {
@@ -207,15 +233,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (addedCount > 0) {
                         await projectManager.updateProject(currentProject.id, currentProject);
                         await loadCurrentProject();
-                        alert(`Successfully added ${addedCount} elements to ${pageName}!`);
+                        alert(`✅ Successfully added ${addedCount} elements to ${pageName}!`);
                     } else {
-                        alert('No new elements found.');
+                        alert('⚠️ No new elements found on this page.');
                     }
+                } else {
+                    alert('❌ Failed to detect elements. Response was empty.');
+                }
+
+                if (btn) {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
                 }
             });
         } catch (err) {
             console.error('Scan failed:', err);
-            alert('Failed to scan page. Please refresh and try again.');
+            alert(`Scan failed: ${err.message}`);
+            if (btn) {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
     }
 
