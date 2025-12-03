@@ -144,22 +144,79 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         list.innerHTML = '';
         Object.values(currentProject.pages).forEach(page => {
+            const elementCount = Object.keys(page.elements).length;
             const item = document.createElement('div');
             item.className = 'list-item';
             item.innerHTML = `
         <div class="list-item-header">
           <span class="list-item-title">${page.name}</span>
           <div class="list-item-actions">
+            <button class="btn btn-info scan-page-btn" data-page-name="${page.name}" title="Scan current page for elements">🔍 Scan</button>
             <button class="btn btn-secondary view-page-btn" data-page-name="${page.name}">View Code</button>
             <button class="btn btn-danger delete-page-btn" data-page-name="${page.name}">Delete</button>
           </div>
         </div>
         <div class="list-item-meta">
-          ${Object.keys(page.elements).length} elements • ${page.methods.length} methods
+          ${elementCount} elements • ${page.methods.length} methods
+          ${elementCount === 0 ? '<span style="color: #ef4444; margin-left: 8px;">(Empty - Click Scan!)</span>' : ''}
         </div>
       `;
             list.appendChild(item);
         });
+    }
+
+    // Scan page for elements
+    async function scanPageForElements(pageName) {
+        if (!currentProject) return;
+
+        const pageObject = currentProject.pages[pageName];
+        if (!pageObject) return;
+
+        const confirmScan = confirm(`Scan current page to add elements to "${pageName}"?\n\nMake sure you are on the correct page: ${pageObject.url}`);
+        if (!confirmScan) return;
+
+        try {
+            // Check content script
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tabs.length === 0) return;
+
+            const tab = tabs[0];
+
+            // Inject if needed
+            try {
+                await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
+            } catch {
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['src/content/content.js']
+                });
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            // Detect
+            chrome.tabs.sendMessage(tab.id, { type: 'DETECT_ELEMENTS' }, async (response) => {
+                if (response && response.elements) {
+                    let addedCount = 0;
+                    response.elements.forEach(el => {
+                        if (!pageObject.elements[el.name]) {
+                            pageObject.addElement(el.name, el.selector, el.type);
+                            addedCount++;
+                        }
+                    });
+
+                    if (addedCount > 0) {
+                        await projectManager.updateProject(currentProject.id, currentProject);
+                        await loadCurrentProject();
+                        alert(`Successfully added ${addedCount} elements to ${pageName}!`);
+                    } else {
+                        alert('No new elements found.');
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Scan failed:', err);
+            alert('Failed to scan page. Please refresh and try again.');
+        }
     }
 
     // Update tests list
@@ -671,7 +728,11 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         // Event delegation for dynamically created buttons
         document.addEventListener('click', (e) => {
             // Page Object buttons
-            if (e.target.classList.contains('view-page-btn')) {
+            if (e.target.classList.contains('scan-page-btn')) {
+                const pageName = e.target.dataset.pageName;
+                scanPageForElements(pageName);
+            }
+            else if (e.target.classList.contains('view-page-btn')) {
                 const pageName = e.target.dataset.pageName;
                 window.viewPageObject(pageName);
             }
