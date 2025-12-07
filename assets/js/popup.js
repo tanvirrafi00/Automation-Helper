@@ -358,24 +358,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Update recorder selects
     function updateRecorderSelects() {
-        const pageSelect = document.getElementById('recorderPageSelect');
         const testSelect = document.getElementById('recorderTestSelect');
         const testCaseSelect = document.getElementById('recorderTestCase');
         const newTestCaseLabel = document.getElementById('newTestCaseNameLabel');
         const newTestCaseInput = document.getElementById('newTestCaseName');
 
-        pageSelect.innerHTML = '<option value="">Select Page Object</option>';
         testSelect.innerHTML = '<option value="">Select Test Spec</option>';
         testCaseSelect.innerHTML = '<option value="">Select or Create Test Case</option><option value="__new__">➕ Create New Test Case</option>';
 
         if (!currentProject) return;
-
-        Object.keys(currentProject.pages).forEach(pageName => {
-            const option = document.createElement('option');
-            option.value = pageName;
-            option.textContent = pageName;
-            pageSelect.appendChild(option);
-        });
 
         Object.keys(currentProject.tests).forEach(testName => {
             const option = document.createElement('option');
