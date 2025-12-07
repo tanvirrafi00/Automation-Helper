@@ -123,10 +123,17 @@ class PageObject {
 }
 
 class TestSpec {
-    constructor(name, pageName, tool, language) {
+    constructor(name, pageNames, tool, language) {
         this.id = this.generateId();
         this.name = name;
-        this.pageName = pageName;
+
+        // Handle legacy single pageName or new array
+        if (typeof pageNames === 'string') {
+            this.pageNames = [pageNames];
+        } else {
+            this.pageNames = pageNames || [];
+        }
+
         this.tool = tool;
         this.language = language;
         this.testCases = [];
@@ -141,6 +148,9 @@ class TestSpec {
     }
 
     addTestCase(testCaseName, steps, data = null) {
+        if (this.testCases.some(tc => tc.name === testCaseName)) {
+            throw new Error(`Test case "${testCaseName}" already exists in this suite.`);
+        }
         this.testCases.push({
             name: testCaseName,
             steps,

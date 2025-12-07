@@ -38,17 +38,25 @@
         let options = args[1] || {};
         let method = options.method || 'GET';
 
+        // Handle Request object if passed as first argument
+        if (typeof url === 'object' && url instanceof Request) {
+            method = url.method;
+            url = url.url;
+        }
+
         clone.text().then(body => {
             window.postMessage({
                 type: 'NETWORK_REQUEST',
                 payload: {
                     type: 'fetch',
                     method: method,
-                    url: url,
+                    url: url.toString(), // Ensure string
                     status: response.status,
                     response: body
                 }
             }, '*');
+        }).catch(err => {
+            // Ignore body read errors
         });
 
         return response;

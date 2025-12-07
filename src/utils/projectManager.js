@@ -1,5 +1,8 @@
 // Project manager for handling multiple automation projects
 
+const ConfigTemplates = typeof require !== 'undefined' ? require('./configTemplates') : null;
+const HelperTemplates = typeof require !== 'undefined' ? require('./helperTemplates') : null;
+
 class ProjectManager {
     constructor() {
         this.storageKey = 'automation_projects';
@@ -229,21 +232,51 @@ class ProjectManager {
             }
         });
 
-        // Generate config file
-        const configContent = this.generateConfigFile(project);
-        if (configContent) {
-            files[project.config] = configContent;
+        // Generate .env.example (universal)
+        files['.env.example'] = ConfigTemplates ? ConfigTemplates.getEnvExample() : '';
+
+        // Generate .gitignore
+        files['.gitignore'] = ConfigTemplates ? ConfigTemplates.getGitignore() : '';
+
+        // Generate config files based on framework
+        if (project.tool === 'playwright') {
+            if (project.language === 'javascript') {
+                files['config/config.js'] = ConfigTemplates ? ConfigTemplates.getPlaywrightConfigJS() : '';
+                files['playwright.config.js'] = ConfigTemplates ? ConfigTemplates.getPlaywrightFrameworkConfig() : '';
+                files['package.json'] = ConfigTemplates ? ConfigTemplates.getPackageJson(project.name) : '';
+            } else if (project.language === 'typescript') {
+                files['config/config.ts'] = ConfigTemplates ? ConfigTemplates.getPlaywrightConfigTS() : '';
+                files['playwright.config.js'] = ConfigTemplates ? ConfigTemplates.getPlaywrightFrameworkConfig() : '';
+                files['package.json'] = ConfigTemplates ? ConfigTemplates.getPackageJson(project.name) : '';
+            } else if (project.language === 'python') {
+                files['config/config.py'] = ConfigTemplates ? ConfigTemplates.getPythonConfig() : '';
+                files['pytest.ini'] = ConfigTemplates ? ConfigTemplates.getPytestIni() : '';
+                files['requirements.txt'] = ConfigTemplates ? ConfigTemplates.getRequirementsTxt() : '';
+            }
+        } else if (project.tool === 'selenium') {
+            if (project.language === 'python') {
+                files['config/config.py'] = ConfigTemplates ? ConfigTemplates.getPythonConfig() : '';
+                files['pytest.ini'] = ConfigTemplates ? ConfigTemplates.getPytestIni() : '';
+                files['requirements.txt'] = ConfigTemplates ? ConfigTemplates.getRequirementsTxt() : '';
+            } else if (project.language === 'java') {
+                files['src/test/resources/config.properties'] = ConfigTemplates ? ConfigTemplates.getJavaConfigProperties() : '';
+                files['src/main/java/config/ConfigReader.java'] = ConfigTemplates ? ConfigTemplates.getJavaConfigReader() : '';
+            }
         }
 
-        // Generate environments file
-        files['environments.json'] = JSON.stringify(project.environments || {}, null, 2);
-
-        // Generate package.json or requirements.txt
-        const depsFile = this.getDependencyFile(project);
-        const depsContent = this.generateDependencies(project);
-        if (depsContent) {
-            files[depsFile] = depsContent;
+        // Generate helper/utility files
+        if (project.language === 'javascript') {
+            files['utils/helpers.js'] = HelperTemplates ? HelperTemplates.getJSHelpers() : '';
+        } else if (project.language === 'typescript') {
+            files['utils/helpers.ts'] = HelperTemplates ? HelperTemplates.getTSHelpers() : '';
+        } else if (project.language === 'python') {
+            files['utils/helpers.py'] = HelperTemplates ? HelperTemplates.getPythonHelpers() : '';
+        } else if (project.language === 'java') {
+            files['src/main/java/utils/Helpers.java'] = HelperTemplates ? HelperTemplates.getJavaHelpers() : '';
         }
+
+        // Generate test data fixtures
+        files['fixtures/testData.json'] = HelperTemplates ? HelperTemplates.getTestDataJSON() : '';
 
         // Generate README
         files['README.md'] = this.generateReadme(project);

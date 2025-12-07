@@ -123,23 +123,69 @@ class ElementDetector {
     generateSelector(element) {
         // Priority 1: ID
         if (element.id) {
-            return `#${element.id}`;
+            // Check if ID is unique and valid
+            if (document.querySelectorAll(`#${CSS.escape(element.id)}`).length === 1) {
+                return `#${CSS.escape(element.id)}`;
+            }
         }
 
-        // Priority 2: Unique data attribute
-        const dataTestId = element.getAttribute('data-testid') ||
-            element.getAttribute('data-test') ||
-            element.getAttribute('data-cy');
-        if (dataTestId) {
-            return `[data-testid="${dataTestId}"]`;
+        // Priority 2: Unique data attributes (common testing attributes)
+        const testAttributes = [
+            'data-testid', 'data-test', 'data-cy', 'data-qa', 'data-automation-id',
+            'data-component', 'data-widget'
+        ];
+
+        for (const attr of testAttributes) {
+            if (element.hasAttribute(attr)) {
+                const value = element.getAttribute(attr);
+                const selector = `[${attr}="${CSS.escape(value)}"]`;
+                if (document.querySelectorAll(selector).length === 1) {
+                    return selector;
+                }
+            }
         }
 
         // Priority 3: Name attribute (for form elements)
         if (element.name) {
-            return `[name="${element.name}"]`;
+            const selector = `[name="${CSS.escape(element.name)}"]`;
+            if (document.querySelectorAll(selector).length === 1) {
+                return selector;
+            }
         }
 
-        // Priority 4: Generate path-based selector
+        // Priority 4: Unique Class combinations
+        if (element.className && typeof element.className === 'string') {
+            const classes = element.className.split(/\s+/).filter(c => c.trim().length > 0);
+            if (classes.length > 0) {
+                // Try single classes first
+                for (const cls of classes) {
+                    const selector = `.${CSS.escape(cls)}`;
+                    if (document.querySelectorAll(selector).length === 1) {
+                        return selector;
+                    }
+                }
+                // Try class combinations (up to 3)
+                if (classes.length > 1) {
+                    const selector = '.' + classes.map(c => CSS.escape(c)).join('.');
+                    if (document.querySelectorAll(selector).length === 1) {
+                        return selector;
+                    }
+                }
+            }
+        }
+
+        // Priority 5: Tag + Text Content (for buttons/links with unique text)
+        if (['BUTTON', 'A', 'LABEL', 'SPAN', 'DIV'].includes(element.tagName)) {
+            const text = element.textContent.trim();
+            if (text.length > 0 && text.length < 50) {
+                // XPath for text matching is often more robust for buttons
+                // But we need CSS selector for this tool usually.
+                // We can try a pseudo-class if supported or just stick to path
+                // For now, let's skip text-based CSS selectors as they are non-standard (:contains)
+            }
+        }
+
+        // Priority 6: Generate path-based selector
         return this.generatePathSelector(element);
     }
 
@@ -152,18 +198,54 @@ class ElementDetector {
             let selector = current.tagName.toLowerCase();
 
             if (current.id) {
-                selector += `#${current.id}`;
+                selector += `#${CSS.escape(current.id)}`;
                 path.unshift(selector);
                 break;
             }
 
-            // Add nth-of-type if needed
-            const siblings = Array.from(current.parentNode?.children || [])
-                .filter(el => el.tagName === current.tagName);
+            // Try to use classes if they make it unique among siblings
+            let classSelector = '';
+            if (current.className && typeof current.className === 'string') {
+                const classes = current.className.split(/\s+/).filter(c => c.trim().length > 0);
+                if (classes.length > 0) {
+                    // Filter out common state classes
+                    const validClasses = classes.filter(c => !['active', 'focus', 'hover', 'selected', 'disabled', 'ng-touched', 'ng-dirty', 'ng-valid', 'ng-invalid'].includes(c));
+                    if (validClasses.length > 0) {
+                        classSelector = '.' + validClasses.map(c => CSS.escape(c)).join('.');
+                    }
+                }
+            }
 
-            if (siblings.length > 1) {
-                const index = siblings.indexOf(current) + 1;
-                selector += `:nth-of-type(${index})`;
+            // Check uniqueness among siblings
+            const siblings = Array.from(current.parentNode?.children || []);
+            const sameTagSiblings = siblings.filter(el => el.tagName === current.tagName);
+
+            if (sameTagSiblings.length > 1) {
+                // If class makes it unique among siblings, use it
+                if (classSelector) {
+                    const sameTagAndClassSiblings = sameTagSiblings.filter(el => {
+                        const elClasses = Array.from(el.classList);
+                        return validClasses.every(c => elClasses.includes(c));
+                    });
+
+                    if (sameTagAndClassSiblings.length === 1) {
+                        selector += classSelector;
+                    } else {
+                        // Still need nth-of-type
+                        const index = sameTagSiblings.indexOf(current) + 1;
+                        selector += `:nth-of-type(${index})`;
+                    }
+                } else {
+                    const index = sameTagSiblings.indexOf(current) + 1;
+                    selector += `:nth-of-type(${index})`;
+                }
+            } else if (classSelector) {
+                // Unique tag, but add class for readability/robustness if desired
+                // For now, keep it simple: if tag is unique, just use tag. 
+                // Unless it's a generic div/span, then class helps.
+                if (['div', 'span'].includes(current.tagName.toLowerCase())) {
+                    selector += classSelector;
+                }
             }
 
             path.unshift(selector);

@@ -38,13 +38,61 @@ if (window.hasRun) {
             font-family: sans-serif;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             min-width: 200px;
+            cursor: move;
+            user-select: none;
         `;
+
+        // Make draggable
+        let isDragging = false;
+        let currentX;
+        let currentY;
+        let initialX;
+        let initialY;
+        let xOffset = 0;
+        let yOffset = 0;
+
+        overlay.addEventListener("mousedown", dragStart);
+        document.addEventListener("mouseup", dragEnd);
+        document.addEventListener("mousemove", drag);
+
+        function dragStart(e) {
+            initialX = e.clientX - xOffset;
+            initialY = e.clientY - yOffset;
+
+            if (e.target === overlay || overlay.contains(e.target)) {
+                isDragging = true;
+            }
+        }
+
+        function dragEnd(e) {
+            initialX = currentX;
+            initialY = currentY;
+            isDragging = false;
+        }
+
+        function drag(e) {
+            if (isDragging) {
+                e.preventDefault();
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
+
+                xOffset = currentX;
+                yOffset = currentY;
+
+                setTranslate(currentX, currentY, overlay);
+            }
+        }
+
+        function setTranslate(xPos, yPos, el) {
+            el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
+        }
 
         const title = document.createElement('div');
         title.textContent = '🔴 Recording...';
         title.style.fontWeight = 'bold';
         title.style.marginBottom = '10px';
         title.style.color = '#ef4444';
+        title.style.cursor = 'move';
 
         const status = document.createElement('div');
         status.id = 'automation-helper-status';
@@ -79,6 +127,7 @@ if (window.hasRun) {
             sendResponse({ elements });
         } else if (message.type === 'START_RECORDING') {
             isRecording = true;
+            isReplaying = false;
             currentPageName = message.pageName;
             currentTestName = message.testName;
             currentTestCase = message.testCaseName;
@@ -89,8 +138,14 @@ if (window.hasRun) {
             removeOverlay();
             sendResponse({ status: 'stopped' });
         } else if (message.type === 'REPLAY_STEPS') {
+            isReplaying = true;
             replaySteps(message.steps);
             sendResponse({ status: 'replaying' });
+        } else if (message.type === 'STOP_REPLAY') {
+            isReplaying = false;
+            updateOverlay('Replay stopped by user.');
+            setTimeout(removeOverlay, 1500);
+            sendResponse({ status: 'stopped' });
         } else if (message.type === 'CAPTURE_SCREENSHOT') {
             // Request background to capture tab
             chrome.runtime.sendMessage({ type: 'CAPTURE_VISIBLE_TAB' }, (response) => {
@@ -98,7 +153,7 @@ if (window.hasRun) {
             });
             return true; // Async response
         } else if (message.type === 'GET_STATUS') {
-            sendResponse({ isRecording });
+            sendResponse({ isRecording, isReplaying });
         }
         return true;
     });
@@ -109,6 +164,11 @@ if (window.hasRun) {
         updateOverlay('Replaying steps...');
 
         for (let i = 0; i < steps.length; i++) {
+            if (!isReplaying) {
+                console.log('Replay stopped by user');
+                break;
+            }
+
             const step = steps[i];
             updateOverlay(`Executing: ${step.action} on ${step.elementName}`);
 
@@ -120,6 +180,8 @@ if (window.hasRun) {
             });
 
             await new Promise(resolve => setTimeout(resolve, 1000)); // Delay for visibility
+
+            if (!isReplaying) break; // Check again after delay
 
             try {
                 const element = document.querySelector(step.selector);
@@ -133,6 +195,9 @@ if (window.hasRun) {
                         status: 'failed',
                         error: 'Element not found'
                     });
+
+                    // Optional: Stop on error? For now, continue or maybe stop
+                    // isReplaying = false; 
                     continue;
                 }
 
@@ -150,7 +215,7 @@ if (window.hasRun) {
                 } else if (step.action === 'screenshot') {
                     // Request screenshot
                     await new Promise(resolve => {
-                        chrome.runtime.sendMessage({ type: 'CAPTURE_SCREENSHOT' }, (response) => {
+                        chrome.runtime.sendMessage({ type: 'CAPTURE_VISIBLE_TAB' }, (response) => {
                             // In a real replay, we might want to save this somewhere
                             // For now, we just simulate the delay
                             setTimeout(resolve, 500);
@@ -175,8 +240,14 @@ if (window.hasRun) {
             }
         }
 
-        updateOverlay('Replay complete!');
-        setTimeout(removeOverlay, 2000);
+        if (isReplaying) {
+            updateOverlay('Replay complete!');
+            setTimeout(removeOverlay, 2000);
+            isReplaying = false;
+        }
+
+        // Notify popup that replay is done (either finished or stopped)
+        chrome.runtime.sendMessage({ type: 'REPLAY_COMPLETE' });
     }
 
     function highlightElement(element) {
@@ -212,6 +283,9 @@ if (window.hasRun) {
             selector: selector,
             elementName: elementName,
             elementType: elementType,
+            elementName: elementName,
+            elementType: elementType,
+            url: window.location.href,
             timestamp: Date.now()
         };
 
@@ -246,6 +320,9 @@ if (window.hasRun) {
             value: element.value,
             elementName: elementName,
             elementType: elementType,
+            elementName: elementName,
+            elementType: elementType,
+            url: window.location.href,
             timestamp: Date.now()
         };
 
@@ -281,6 +358,9 @@ if (window.hasRun) {
             value: element.value,
             elementName: elementName,
             elementType: elementType,
+            elementName: elementName,
+            elementType: elementType,
+            url: window.location.href,
             timestamp: Date.now()
         };
 
@@ -433,12 +513,136 @@ if (window.hasRun) {
         return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
     }
 
+    // Modal detection functions
+    function detectActiveModal() {
+        // Check for common modal patterns
+        const modalSelectors = [
+            '[role="dialog"][aria-modal="true"]',
+            '[role="alertdialog"]',
+            '.modal.show',  // Bootstrap
+            '.modal.in',    // Bootstrap 3
+            '.MuiDialog-root [role="dialog"]',  // Material UI
+            '[data-modal="true"]',
+            'dialog[open]'  // HTML5 dialog
+        ];
+
+        for (const selector of modalSelectors) {
+            const modal = document.querySelector(selector);
+            if (modal && isModalVisible(modal)) {
+                return modal;
+            }
+        }
+
+        // Check for generic modals with high z-index
+        const allElements = document.querySelectorAll('[role="dialog"], .modal, .dialog');
+        for (const el of allElements) {
+            if (isModalVisible(el)) {
+                const zIndex = parseInt(window.getComputedStyle(el).zIndex);
+                if (zIndex > 1000) {
+                    return el;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function isModalVisible(element) {
+        const style = window.getComputedStyle(element);
+        return style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            style.opacity !== '0' &&
+            element.offsetWidth > 0 &&
+            element.offsetHeight > 0;
+    }
+
+    function getModalName(modal) {
+        // Try to get modal title or heading
+        const title = modal.querySelector('h1, h2, h3, h4, [role="heading"], .modal-title, .dialog-title');
+        if (title && title.textContent.trim()) {
+            return sanitizeName(title.textContent.trim()) + 'Modal';
+        }
+
+        // Try aria-label
+        const ariaLabel = modal.getAttribute('aria-label') || modal.getAttribute('aria-labelledby');
+        if (ariaLabel) {
+            const labelEl = document.getElementById(ariaLabel);
+            if (labelEl) {
+                return sanitizeName(labelEl.textContent.trim()) + 'Modal';
+            }
+            return sanitizeName(ariaLabel) + 'Modal';
+        }
+
+        // Fallback
+        return 'Modal';
+    }
+
+    function showModalDetectionBadge(modalName) {
+        // Remove existing badge if any
+        const existing = document.getElementById('modal-scan-indicator');
+        if (existing) existing.remove();
+
+        const badge = document.createElement('div');
+        badge.id = 'modal-scan-indicator';
+        badge.textContent = `🎯 Scanning ${modalName} Only`;
+        badge.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 999999;
+            font-family: sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease-out;
+        `;
+
+        // Add animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        document.body.appendChild(badge);
+
+        // Auto-remove after 4 seconds
+        setTimeout(() => {
+            badge.style.animation = 'slideIn 0.3s ease-out reverse';
+            setTimeout(() => badge.remove(), 300);
+        }, 4000);
+    }
+
     // ElementDetector class (inline for content script)
     class ElementDetector {
         constructor() {
             this.elementTypes = {
                 button: ['button', '[type="button"]', '[type="submit"]', '[role="button"]'],
-                input: ['input[type="text"]', 'input[type="email"]', 'input[type="password"]', 'input[type="number"]'],
+                input: [
+                    'input[type="text"]',
+                    'input[type="email"]',
+                    'input[type="password"]',
+                    'input[type="number"]',
+                    'input[type="search"]',
+                    'input[type="tel"]',
+                    'input[type="url"]',
+                    'input[type="date"]',
+                    'input[type="time"]',
+                    'input[type="datetime-local"]',
+                    'input[type="month"]',
+                    'input[type="week"]',
+                    'input[type="color"]',
+                    'input[type="file"]',
+                    'input[type="range"]',
+                    'input:not([type])' // Generic inputs without type
+                ],
                 checkbox: ['input[type="checkbox"]'],
                 radio: ['input[type="radio"]'],
                 select: ['select'],
@@ -447,16 +651,56 @@ if (window.hasRun) {
             };
         }
 
+        isElementVisible(element) {
+            // Check if element is visible
+            const style = window.getComputedStyle(element);
+            return style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                style.opacity !== '0' &&
+                element.offsetWidth > 0 &&
+                element.offsetHeight > 0;
+        }
+
         detectElements() {
             const elements = [];
+            const processedElements = new Set(); // Track processed elements to avoid duplicates
+            const nameCounter = {}; // Track name usage for uniqueness
             const allSelectors = Object.values(this.elementTypes).flat();
 
+            // Check if there's an active modal
+            const activeModal = detectActiveModal();
+            const scanRoot = activeModal || document.body;
+
+            // Show visual feedback if scanning a modal
+            if (activeModal) {
+                const modalName = getModalName(activeModal);
+                showModalDetectionBadge(modalName);
+                console.log(`🎯 Modal detected: Scanning only elements within "${modalName}"`);
+            }
+
             allSelectors.forEach(selector => {
-                const found = document.querySelectorAll(selector);
-                found.forEach((el, index) => {
+                const found = scanRoot.querySelectorAll(selector);
+                found.forEach((el) => {
+                    // Skip if already processed
+                    if (processedElements.has(el)) return;
+
+                    // Skip if not visible
+                    if (!this.isElementVisible(el)) return;
+
+                    // If scanning a modal, ensure element is within the modal
+                    if (activeModal && !activeModal.contains(el)) return;
+
                     const type = getElementType(el);
-                    const name = generateElementName(el, type);
+                    let name = generateElementName(el, type);
                     const sel = generateSelector(el);
+
+                    // Ensure unique names
+                    if (nameCounter[name]) {
+                        nameCounter[name]++;
+                        name = `${name}${nameCounter[name]}`;
+                    } else {
+                        nameCounter[name] = 0;
+                    }
 
                     elements.push({
                         name,
@@ -465,6 +709,8 @@ if (window.hasRun) {
                         text: el.textContent?.trim().substring(0, 50) || '',
                         placeholder: el.placeholder || ''
                     });
+
+                    processedElements.add(el);
                 });
             });
 

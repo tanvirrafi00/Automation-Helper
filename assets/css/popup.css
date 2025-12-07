@@ -669,6 +669,35 @@ body {
     font-weight: normal;
 }
 
+/* Multi-select dropdown styling */
+select[multiple] {
+    min-height: 120px !important;
+    padding: 8px !important;
+}
+
+select[multiple] option {
+    padding: 8px 12px;
+    margin: 2px 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+select[multiple] option:hover {
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+select[multiple] option:checked {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: var(--white);
+    font-weight: 500;
+}
+
+/* Dark mode adjustments for multi-select */
+body.dark-mode select[multiple] option:checked {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+}
+
+
 .modal-footer {
     padding: 16px 20px;
     border-top: 1px solid var(--border);
@@ -984,4 +1013,71 @@ a,
 .tab-btn,
 .list-item {
     transition-property: all;
+}
+
+/* Multi-select container styles */
+.multi-select-container {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px;
+    max-height: 150px;
+    overflow-y: auto;
+    background: #fff;
+}
+
+.multi-select-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.multi-select-item:hover {
+    background-color: #f3f4f6;
+}
+
+.multi-select-item.selected {
+    background-color: #eff6ff;
+    border: 1px solid #bfdbfe;
+}
+
+.multi-select-item input[type="checkbox"] {
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.multi-select-item label {
+    margin: 0;
+    cursor: pointer;
+    flex: 1;
+    font-size: 13px;
+    color: #374151;
+}
+
+/* Multi-select styling */
+.multi-select {
+    height: auto !important;
+    min-height: 100px;
+    padding: 8px !important;
+    background: var(--white) !important;
+    border: 1px solid var(--border) !important;
+}
+
+.multi-select option {
+    padding: 6px 10px;
+    margin-bottom: 2px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.multi-select option:checked {
+    background: var(--primary) !important;
+    color: var(--white) !important;
+}
+
+.multi-select option:hover {
+    background: var(--light-gray);
 }

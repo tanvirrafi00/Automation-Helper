@@ -134,16 +134,24 @@
               </select>
               <small style="display: block; color: #666; margin-top: 4px;">Select the page object for your test</small>
             </label>
-            <label>
-              Test Spec: <span style="color: red;">*</span>
-              <select id="recorderTestSelect" required>
-                <option value="">Select Test Spec</option>
-              </select>
-              <small style="display: block; color: #666; margin-top: 4px;">Select the test suite to add cases to</small>
+            Test Spec: <span style="color: red;">*</span>
+            <select id="recorderTestSelect" required>
+              <option value="">Select Test Spec</option>
+            </select>
+            <small style="display: block; color: #666; margin-top: 4px;">Select the test suite to add cases to</small>
             </label>
             <label>
-              Test Case Name: <span style="color: red;">*</span>
-              <input type="text" id="recorderTestCase" placeholder="e.g., should login successfully" required>
+              Test Case: <span style="color: red;">*</span>
+              <select id="recorderTestCase" required>
+                <option value="">Select or Create Test Case</option>
+                <option value="__new__">➕ Create New Test Case</option>
+              </select>
+              <small style="display: block; color: #666; margin-top: 4px;">Select an existing test case or create a new
+                one</small>
+            </label>
+            <label id="newTestCaseNameLabel" style="display:none;">
+              New Test Case Name:
+              <input type="text" id="newTestCaseName" placeholder="e.g., should login successfully">
               <small style="display: block; color: #666; margin-top: 4px;">Name for this specific test case</small>
             </label>
             <div class="recorder-options">
@@ -166,6 +174,7 @@
             <button class="btn btn-success" id="startRecBtn">⏺ Start Recording</button>
             <button class="btn btn-danger" id="stopRecBtn" disabled>⏹ Stop Recording</button>
             <button class="btn btn-info" id="replayBtn">▶ Replay</button>
+            <button class="btn btn-danger" id="stopReplayBtn" style="display:none;">⏹ Stop Replay</button>
             <button class="btn btn-warning" id="screenshotBtn">📷 Screenshot</button>
             <button class="btn btn-secondary" id="clearStepsBtn">🗑 Clear Steps</button>
             <button class="btn btn-primary" id="generateCodeBtn" style="display:none;">💾 Generate & Save Code</button>
@@ -271,16 +280,33 @@
           </ol>
         </div>
         <label>
-          Page Name: <span style="color: red;">*</span>
-          <input type="text" id="pageName" placeholder="e.g., LoginPage, HomePage" required>
-          <small style="display: block; color: #666; margin-top: 4px;">Use PascalCase (e.g., LoginPage,
-            DashboardPage)</small>
+          Action:
+          <select id="pageAction">
+            <option value="new">Create New Page Object</option>
+            <option value="existing">Append to Existing Page Object</option>
+          </select>
         </label>
-        <label>
-          Page URL: <span style="color: red;">*</span>
-          <input type="text" id="pageUrl" placeholder="https://example.com/login" required>
-          <small style="display: block; color: #666; margin-top: 4px;">The URL of the page you're testing</small>
-        </label>
+        <div id="existingPageFields" style="display: none;">
+          <label>
+            Select Page Object:
+            <select id="existingPageSelect">
+              <option value="">Select Page Object</option>
+            </select>
+          </label>
+        </div>
+        <div id="newPageFields">
+          <label>
+            Page Name: <span style="color: red;">*</span>
+            <input type="text" id="pageName" placeholder="e.g., LoginPage, HomePage" required>
+            <small style="display: block; color: #666; margin-top: 4px;">Use PascalCase (e.g., LoginPage,
+              DashboardPage)</small>
+          </label>
+          <label>
+            Page URL: <span style="color: red;">*</span>
+            <input type="text" id="pageUrl" placeholder="https://example.com/login" required>
+            <small style="display: block; color: #666; margin-top: 4px;">The URL of the page you're testing</small>
+          </label>
+        </div>
         <div class="checkbox-group" style="margin-top: 12px; padding: 12px; background: #f9fafb; border-radius: 6px;">
           <input type="checkbox" id="autoDetectElements" checked>
           <label for="autoDetectElements" style="font-weight: 600;">
@@ -320,9 +346,11 @@
           </label>
           <label>
             Page Object:
-            <select id="testPageObject">
-              <option value="">Select Page Object</option>
-            </select>
+            <div id="testPageObject" class="multi-select-container">
+              <!-- Checkboxes will be populated here -->
+            </div>
+            <p class="help-text" style="font-size: 11px; color: #aaa; margin-top: 4px;">Select one or more page objects
+            </p>
           </label>
         </div>
         <div id="existingSuiteFields" style="display: none;">
@@ -331,6 +359,14 @@
             <select id="existingTestSuite">
               <option value="">Select Suite</option>
             </select>
+          </label>
+          <label>
+            Add Page Objects (Optional):
+            <div id="existingSuitePageObject" class="multi-select-container">
+              <!-- Checkboxes will be populated here -->
+            </div>
+            <p class="help-text" style="font-size: 11px; color: #aaa; margin-top: 4px;">Select additional page objects
+              to add</p>
           </label>
         </div>
         <label>

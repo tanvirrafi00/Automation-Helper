@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 recordedSteps.forEach(step => addStepToList(step));
 
                 // Restore selections if possible
-                if (session.pageName) document.getElementById('recorderPageSelect').value = session.pageName;
+                if (session.testName) document.getElementById('recorderTestSelect').value = session.testName;
                 if (session.testName) document.getElementById('recorderTestSelect').value = session.testName;
                 if (session.testCase) document.getElementById('recorderTestCase').value = session.testCase;
 
@@ -97,6 +97,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentProject = await projectManager.getCurrentProject();
 
         if (currentProject) {
+            // Auto-fix: Ensure tool and language are set (for legacy projects)
+            let needsSave = false;
+            if (!currentProject.tool) {
+                console.warn('Auto-fixing: Project missing tool property, defaulting to playwright');
+                currentProject.tool = 'playwright';
+                needsSave = true;
+            }
+            if (!currentProject.language) {
+                console.warn('Auto-fixing: Project missing language property, defaulting to javascript');
+                currentProject.language = 'javascript';
+                needsSave = true;
+            }
+
+            // Save the fixed project back to storage
+            if (needsSave) {
+                try {
+                    await projectManager.updateProject(currentProject.id, {
+                        tool: currentProject.tool,
+                        language: currentProject.language
+                    });
+                    console.log('✅ Project auto-fixed and saved');
+                } catch (e) {
+                    console.error('Failed to save default config:', e);
+                }
+            }
+
             projectSelect.value = currentProject.id;
             updateDashboard();
             updatePageObjectsList();
@@ -225,7 +251,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     let addedCount = 0;
                     response.elements.forEach(el => {
                         if (!pageObject.elements[el.name]) {
-                            pageObject.addElement(el.name, el.selector, el.type);
+                            // Directly add to elements object since pageObject might be a plain object
+                            pageObject.elements[el.name] = {
+                                selector: el.selector,
+                                type: el.type
+                            };
                             addedCount++;
                         }
                     });
@@ -235,7 +265,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await loadCurrentProject();
                         alert(`✅ Successfully added ${addedCount} elements to ${pageName}!`);
                     } else {
-                        alert('⚠️ No new elements found on this page.');
+                        alert('⚠️ No new elements found. (All detected elements are already in the Page Object)');
                     }
                 } else {
                     alert('❌ Failed to detect elements. Response was empty.');
@@ -295,6 +325,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 casesHtml = '<div class="test-cases-list"><p class="empty-state" style="padding: 12px; margin: 0;">No test cases yet. Record some steps to add test cases.</p></div>';
             }
 
+            // Get page object names for display (handle both legacy and new format)
+            let pageObjectsDisplay = '';
+            if (test.pageNames && Array.isArray(test.pageNames)) {
+                pageObjectsDisplay = test.pageNames.join(', ');
+            } else if (test.pageName) {
+                pageObjectsDisplay = test.pageName;
+            } else {
+                pageObjectsDisplay = 'None';
+            }
+
             item.innerHTML = `
         <div class="list-item-header">
           <div class="test-suite-title">
@@ -308,7 +348,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
         </div>
         <div class="list-item-meta">
-          Page Object: ${test.pageName} • Tool: ${test.tool} • Language: ${test.language}
+          Page Objects: ${pageObjectsDisplay} • Tool: ${test.tool} • Language: ${test.language}
         </div>
         ${casesHtml}
       `;
@@ -320,9 +360,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updateRecorderSelects() {
         const pageSelect = document.getElementById('recorderPageSelect');
         const testSelect = document.getElementById('recorderTestSelect');
+        const testCaseSelect = document.getElementById('recorderTestCase');
+        const newTestCaseLabel = document.getElementById('newTestCaseNameLabel');
+        const newTestCaseInput = document.getElementById('newTestCaseName');
 
         pageSelect.innerHTML = '<option value="">Select Page Object</option>';
         testSelect.innerHTML = '<option value="">Select Test Spec</option>';
+        testCaseSelect.innerHTML = '<option value="">Select or Create Test Case</option><option value="__new__">➕ Create New Test Case</option>';
 
         if (!currentProject) return;
 
@@ -338,6 +382,77 @@ document.addEventListener('DOMContentLoaded', async () => {
             option.value = testName;
             option.textContent = testName;
             testSelect.appendChild(option);
+        });
+
+        // Remove old event listeners by cloning
+        const newTestSelect = testSelect.cloneNode(true);
+        testSelect.parentNode.replaceChild(newTestSelect, testSelect);
+        const newTestCaseSelect = testCaseSelect.cloneNode(true);
+        testCaseSelect.parentNode.replaceChild(newTestCaseSelect, testCaseSelect);
+
+        // Populate test cases when test suite is selected
+        newTestSelect.addEventListener('change', function () {
+            const selectedTest = this.value;
+            newTestCaseSelect.innerHTML = '<option value="">Select or Create Test Case</option><option value="__new__">➕ Create New Test Case</option>';
+
+            if (selectedTest && currentProject.tests[selectedTest]) {
+                const testSpec = currentProject.tests[selectedTest];
+                if (testSpec.testCases && testSpec.testCases.length > 0) {
+                    testSpec.testCases.forEach(testCase => {
+                        const option = document.createElement('option');
+                        option.value = testCase.name;
+                        option.textContent = testCase.name;
+                        newTestCaseSelect.appendChild(option);
+                    });
+                }
+
+                // Auto-select associated Page Object(s)
+                if (testSpec.pageNames && testSpec.pageNames.length > 0) {
+                    pageSelect.innerHTML = ''; // Clear current list
+
+                    testSpec.pageNames.forEach(pageName => {
+                        if (currentProject.pages[pageName]) {
+                            const option = document.createElement('option');
+                            option.value = pageName;
+                            option.textContent = pageName;
+                            pageSelect.appendChild(option);
+                        }
+                    });
+
+                    // Select the first one by default
+                    if (pageSelect.options.length > 0) {
+                        pageSelect.selectedIndex = 0;
+                    }
+                } else if (testSpec.pageName) {
+                    // Legacy support
+                    pageSelect.innerHTML = '';
+                    const option = document.createElement('option');
+                    option.value = testSpec.pageName;
+                    option.textContent = testSpec.pageName;
+                    pageSelect.appendChild(option);
+                    pageSelect.selectedIndex = 0;
+                }
+            } else {
+                // If no test suite selected (or invalid), reset page select to show all
+                pageSelect.innerHTML = '<option value="">Select Page Object</option>';
+                Object.keys(currentProject.pages).forEach(pageName => {
+                    const option = document.createElement('option');
+                    option.value = pageName;
+                    option.textContent = pageName;
+                    pageSelect.appendChild(option);
+                });
+            }
+        });
+        // Handle "Create New Test Case" selection
+        newTestCaseSelect.addEventListener('change', function () {
+            if (this.value === '__new__') {
+                newTestCaseLabel.style.display = 'block';
+                newTestCaseInput.required = true;
+            } else {
+                newTestCaseLabel.style.display = 'none';
+                newTestCaseInput.required = false;
+                newTestCaseInput.value = '';
+            }
         });
     }
 
@@ -433,6 +548,27 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 alert('Please select a project first');
                 return;
             }
+            // Reset form fields
+            document.getElementById('pageName').value = '';
+            document.getElementById('autoDetectElements').checked = false;
+            document.getElementById('pageAction').value = 'new';
+
+            // Toggle fields based on action
+            const newPageFields = document.getElementById('newPageFields');
+            const existingPageFields = document.getElementById('existingPageFields');
+            newPageFields.style.display = 'block';
+            existingPageFields.style.display = 'none';
+
+            // Populate existing page objects dropdown
+            const existingPageSelect = document.getElementById('existingPageSelect');
+            existingPageSelect.innerHTML = '<option value="">Select Page Object</option>';
+            Object.keys(currentProject.pages).forEach(pageName => {
+                const option = document.createElement('option');
+                option.value = pageName;
+                option.textContent = pageName;
+                existingPageSelect.appendChild(option);
+            });
+
             // Auto-fill URL from current tab
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs.length > 0) {
@@ -448,21 +584,51 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         document.getElementById('addPageObjectBtn').addEventListener('click', openPageObjectModal);
         document.getElementById('createPageObjectBtn').addEventListener('click', openPageObjectModal);
 
-        // Create page object
-        // Create page object
+        // Handle Page Action Toggle
+        document.getElementById('pageAction')?.addEventListener('change', (e) => {
+            const newPageFields = document.getElementById('newPageFields');
+            const existingPageFields = document.getElementById('existingPageFields');
+
+            if (e.target.value === 'new') {
+                newPageFields.style.display = 'block';
+                existingPageFields.style.display = 'none';
+            } else {
+                newPageFields.style.display = 'none';
+                existingPageFields.style.display = 'block';
+            }
+        });
+
+        // Create/Update page object
         document.getElementById('createPageBtn').addEventListener('click', async () => {
-            const name = document.getElementById('pageName').value;
-            const url = document.getElementById('pageUrl').value;
+            const action = document.getElementById('pageAction').value;
             const autoDetect = document.getElementById('autoDetectElements').checked;
 
-            if (!name) {
-                alert('Please enter a page name');
-                return;
+            let pageObject;
+            let pageName;
+
+            if (action === 'new') {
+                pageName = document.getElementById('pageName').value;
+                const url = document.getElementById('pageUrl').value;
+
+                if (!pageName) {
+                    alert('Please enter a page name');
+                    return;
+                }
+                pageObject = new PageObject(pageName, url, currentProject.tool, currentProject.language);
+            } else {
+                pageName = document.getElementById('existingPageSelect').value;
+                if (!pageName) {
+                    alert('Please select an existing Page Object');
+                    return;
+                }
+                pageObject = currentProject.pages[pageName];
+                if (!pageObject) {
+                    alert('Selected Page Object not found!');
+                    return;
+                }
             }
 
             try {
-                const pageObject = new PageObject(name, url, currentProject.tool, currentProject.language);
-
                 if (autoDetect) {
                     // Wait for element detection
                     await new Promise((resolve) => {
@@ -473,7 +639,6 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                             }
 
                             // Check if we can inject script first (in case it's not loaded)
-                            // We'll try to send message, if it fails, we assume script isn't there
                             chrome.tabs.sendMessage(tabs[0].id, { type: 'DETECT_ELEMENTS' }, (response) => {
                                 if (chrome.runtime.lastError) {
                                     console.log('Content script not ready for detection, skipping auto-detect');
@@ -484,7 +649,20 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                                 if (response && response.elements) {
                                     console.log('Detected elements:', response.elements.length);
                                     response.elements.forEach(el => {
-                                        pageObject.addElement(el.name, el.selector, el.type);
+                                        // Handle both class instance and plain object
+                                        if (typeof pageObject.addElement === 'function') {
+                                            pageObject.addElement(el.name, el.selector, el.type);
+                                        } else {
+                                            if (!pageObject.elements) pageObject.elements = {};
+                                            // Check if element already exists to avoid overwriting with same selector if desired, 
+                                            // but usually we want to add new ones. 
+                                            // If name exists, it will overwrite.
+                                            pageObject.elements[el.name] = {
+                                                selector: el.selector,
+                                                type: el.type,
+                                                addedAt: Date.now()
+                                            };
+                                        }
                                     });
                                 }
                                 resolve();
@@ -493,13 +671,20 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                     });
                 }
 
-                await projectManager.addPageObject(currentProject.id, pageObject);
+                if (action === 'new') {
+                    await projectManager.addPageObject(currentProject.id, pageObject);
+                    alert('Page object created successfully!');
+                } else {
+                    // For existing, we just need to save the project since we modified the object reference
+                    await projectManager.updateProject(currentProject.id, { pages: currentProject.pages });
+                    alert(`Page object "${pageName}" updated successfully!`);
+                }
+
                 closeModal(newPageObjectModal);
                 await loadCurrentProject();
-                alert('Page object created successfully!');
             } catch (err) {
-                console.error('Failed to create page object:', err);
-                alert('Failed to create page object. Please try again.');
+                console.error('Failed to save page object:', err);
+                alert('Failed to save page object. Please try again.');
             }
         });
 
@@ -537,25 +722,90 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         });
 
         function populateTestModal() {
-            // Populate page object select
-            const pageSelect = document.getElementById('testPageObject');
-            pageSelect.innerHTML = '<option value="">Select Page Object</option>';
-            Object.keys(currentProject.pages).forEach(pageName => {
-                const option = document.createElement('option');
-                option.value = pageName;
-                option.textContent = pageName;
-                pageSelect.appendChild(option);
-            });
+            // Helper to populate multi-select container
+            const populateMultiSelect = (containerId, items) => {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+
+                if (items.length === 0) {
+                    container.innerHTML = '<div style="padding: 8px; color: #666; font-style: italic;">No page objects found</div>';
+                    return;
+                }
+
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'multi-select-item';
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = item;
+                    checkbox.id = `${containerId}-${item}`;
+
+                    const label = document.createElement('label');
+                    label.htmlFor = `${containerId}-${item}`;
+                    label.textContent = item;
+
+                    // Toggle selection on click
+                    div.addEventListener('click', (e) => {
+                        if (e.target !== checkbox && e.target !== label) {
+                            checkbox.checked = !checkbox.checked;
+                        }
+                        if (checkbox.checked) {
+                            div.classList.add('selected');
+                        } else {
+                            div.classList.remove('selected');
+                        }
+                    });
+
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.checked) {
+                            div.classList.add('selected');
+                        } else {
+                            div.classList.remove('selected');
+                        }
+                    });
+
+                    div.appendChild(checkbox);
+                    div.appendChild(label);
+                    container.appendChild(div);
+                });
+            };
+
+            // Populate page object select with multi-select support
+            const pageNames = Object.keys(currentProject.pages);
+            populateMultiSelect('testPageObject', pageNames);
 
             // Populate existing test suites select
-            const suiteSelect = document.getElementById('existingTestSuite');
-            suiteSelect.innerHTML = '<option value="">Select Suite</option>';
+            const existingSuiteSelect = document.getElementById('existingTestSuite');
+            existingSuiteSelect.innerHTML = '<option value="">Select Suite</option>';
+
             Object.keys(currentProject.tests).forEach(testName => {
                 const option = document.createElement('option');
                 option.value = testName;
                 option.textContent = testName;
-                suiteSelect.appendChild(option);
+                existingSuiteSelect.appendChild(option);
             });
+
+            // Populate existing suite page object select (multi-select)
+            populateMultiSelect('existingSuitePageObject', pageNames);
+        }
+
+        // Helper to get selected values from multi-select container
+        function getMultiSelectValues(containerId) {
+            const container = document.getElementById(containerId);
+            const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+
+        // Helper function to check if test case name exists across all test suites
+        function isTestCaseNameDuplicate(testCaseName, excludeSuiteName = null) {
+            for (const [suiteName, testSpec] of Object.entries(currentProject.tests)) {
+                if (excludeSuiteName && suiteName === excludeSuiteName) continue;
+                if (testSpec.testCases && testSpec.testCases.some(tc => tc.name === testCaseName)) {
+                    return suiteName;
+                }
+            }
+            return null;
         }
 
         // Create test spec or add to existing
@@ -564,8 +814,15 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             const testCaseName = document.getElementById('testCaseName').value;
             const isDataDriven = document.getElementById('isDataDriven').checked;
 
-            if (!testCaseName) {
+            if (!testCaseName || testCaseName.trim() === '') {
                 alert('Please enter a test case name');
+                return;
+            }
+
+            // Check for duplicate test case names across all suites
+            const duplicateSuite = isTestCaseNameDuplicate(testCaseName);
+            if (duplicateSuite) {
+                alert(`❌ Test case name "${testCaseName}" already exists in suite "${duplicateSuite}".\n\nPlease choose a different name.`);
                 return;
             }
 
@@ -573,46 +830,94 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 if (action === 'new') {
                     // Create new test suite
                     const name = document.getElementById('testName').value;
-                    const pageName = document.getElementById('testPageObject').value;
+                    const selectedPages = getMultiSelectValues('testPageObject');
 
-                    if (!name || !pageName) {
-                        alert('Please fill in all required fields');
+                    if (!name || name.trim() === '') {
+                        alert('Please enter a test suite name');
                         return;
                     }
 
-                    const testSpec = new TestSpec(name, pageName, currentProject.tool, currentProject.language);
+                    if (selectedPages.length === 0) {
+                        alert('Please select at least one Page Object.');
+                        return;
+                    }
+
+                    const testSpec = new TestSpec(name, selectedPages, currentProject.tool, currentProject.language);
                     const data = isDataDriven ? [{ username: 'test', password: '123' }] : null;
-                    testSpec.addTestCase(testCaseName, [], data);
+
+                    try {
+                        testSpec.addTestCase(testCaseName, [], data);
+                    } catch (err) {
+                        alert(`❌ ${err.message}`);
+                        return;
+                    }
 
                     await projectManager.addTestSpec(currentProject.id, testSpec);
-                    alert('Test suite created successfully!');
+                    alert(`✅ Test suite "${name}" created successfully with ${selectedPages.length} page object(s)!`);
                 } else {
                     // Add to existing suite
                     const suiteName = document.getElementById('existingTestSuite').value;
-
                     if (!suiteName) {
                         alert('Please select a test suite');
                         return;
                     }
 
                     const testSpec = currentProject.tests[suiteName];
-                    if (!testSpec) {
-                        alert('Test suite not found!');
+                    const data = isDataDriven ? [{ username: 'test', password: '123' }] : null;
+
+                    // Add additional page objects if selected
+                    const selectedPages = getMultiSelectValues('existingSuitePageObject');
+
+                    if (selectedPages.length > 0) {
+                        // Initialize pageNames if it doesn't exist (legacy support)
+                        if (!testSpec.pageNames) {
+                            testSpec.pageNames = testSpec.pageName ? [testSpec.pageName] : [];
+                        }
+
+                        // Add new pages if they don't exist
+                        let addedCount = 0;
+                        selectedPages.forEach(page => {
+                            if (!testSpec.pageNames.includes(page)) {
+                                testSpec.pageNames.push(page);
+                                addedCount++;
+                            }
+                        });
+
+                        if (addedCount > 0) {
+                            console.log(`Added ${addedCount} new page objects to suite ${suiteName}`);
+                        }
+                    }
+
+                    try {
+                        // We need to re-instantiate TestSpec to use its methods properly if it was just a plain object from storage
+                        // But here we are modifying the object directly which is fine as long as structure matches
+                        // Let's use the method if available, or manual push
+                        if (typeof testSpec.addTestCase === 'function') {
+                            testSpec.addTestCase(testCaseName, [], data);
+                        } else {
+                            // Manual add for plain object
+                            if (!testSpec.testCases) testSpec.testCases = [];
+                            testSpec.testCases.push({
+                                name: testCaseName,
+                                steps: [],
+                                data: data,
+                                id: Date.now().toString()
+                            });
+                        }
+                    } catch (err) {
+                        alert(`❌ ${err.message}`);
                         return;
                     }
 
-                    const data = isDataDriven ? [{ username: 'test', password: '123' }] : null;
-                    testSpec.addTestCase(testCaseName, [], data);
-
-                    await projectManager.updateProject(currentProject.id, currentProject);
-                    alert('Test case added successfully!');
+                    await projectManager.updateProject(currentProject.id, { tests: currentProject.tests });
+                    alert(`✅ Test case added to "${suiteName}" successfully!`);
                 }
 
                 closeModal(newTestModal);
                 await loadCurrentProject();
             } catch (err) {
-                console.error('Failed to create/update test:', err);
-                alert('Failed to create/update test. Please try again.');
+                console.error('Failed to create test:', err);
+                alert('Failed to create test. Please try again.');
             }
         });
 
@@ -680,10 +985,15 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 return;
             }
 
+            // Toggle buttons
+            document.getElementById('replayBtn').style.display = 'none';
+            document.getElementById('stopReplayBtn').style.display = 'inline-block';
+
             // Send steps to content script
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs.length === 0) {
                     alert('No active tab found');
+                    resetReplayButtons();
                     return;
                 }
                 chrome.tabs.sendMessage(tabs[0].id, {
@@ -692,9 +1002,25 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 }).catch(err => {
                     console.error('Replay failed:', err);
                     alert('Failed to start replay. Please refresh the page.');
+                    resetReplayButtons();
                 });
             });
         });
+
+        // Stop Replay button
+        document.getElementById('stopReplayBtn')?.addEventListener('click', () => {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs.length > 0) {
+                    chrome.tabs.sendMessage(tabs[0].id, { type: 'STOP_REPLAY' });
+                }
+            });
+            resetReplayButtons();
+        });
+
+        function resetReplayButtons() {
+            document.getElementById('replayBtn').style.display = 'inline-block';
+            document.getElementById('stopReplayBtn').style.display = 'none';
+        }
 
         // Screenshot button
         document.getElementById('screenshotBtn')?.addEventListener('click', () => {
@@ -821,11 +1147,36 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     function startRecording() {
         const pageName = document.getElementById('recorderPageSelect').value;
         const testName = document.getElementById('recorderTestSelect').value;
-        const testCaseName = document.getElementById('recorderTestCase').value;
+        const testCaseSelect = document.getElementById('recorderTestCase');
+        const testCaseValue = testCaseSelect.value;
+
+        // Get the actual test case name
+        let testCaseName;
+        if (testCaseValue === '__new__') {
+            // Creating new test case
+            testCaseName = document.getElementById('newTestCaseName').value.trim();
+            if (!testCaseName) {
+                alert('Please enter a name for the new test case.');
+                return;
+            }
+        } else {
+            // Using existing test case
+            testCaseName = testCaseValue;
+        }
 
         if (!pageName || !testName || !testCaseName) {
-            alert('Please select Page Object, Test Spec, and enter a Test Case name before recording.');
+            alert('Please select Page Object, Test Spec, and Test Case.');
             return;
+        }
+
+        // Validate test case name doesn't already exist (only for new test cases)
+        if (testCaseValue === '__new__') {
+            for (const [suiteName, suite] of Object.entries(currentProject.tests)) {
+                if (suite.testCases && suite.testCases.some(tc => tc.name === testCaseName)) {
+                    alert(`❌ Test case name "${testCaseName}" already exists in suite "${suiteName}".\n\nPlease choose a different name.`);
+                    return;
+                }
+            }
         }
 
         setRecordingUI(true);
@@ -909,45 +1260,62 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     }
 
     async function saveGeneratedCode() {
-        console.log('saveGeneratedCode called');
-        console.log('Recorded steps:', recordedSteps.length);
-
-        if (!currentProject) {
-            alert('Please create or select a project first!');
-            return;
-        }
-
-        if (recordedSteps.length === 0) {
-            alert('No steps recorded! Please record some steps first.');
-            return;
-        }
-
-        const pageName = document.getElementById('recorderPageSelect').value;
-        const testName = document.getElementById('recorderTestSelect').value;
-        const testCaseName = document.getElementById('recorderTestCase').value;
-
-        console.log('Page:', pageName, 'Test:', testName, 'Case:', testCaseName);
-
-        if (!pageName) {
-            alert('Please select a Page Object from the dropdown!');
-            return;
-        }
-
-        if (!testName) {
-            alert('Please select a Test Spec from the dropdown!');
-            return;
-        }
-
-        if (!testCaseName || testCaseName.trim() === '') {
-            alert('Please enter a Test Case name!');
-            return;
-        }
-
         try {
-            // Get the test spec
+            if (!currentProject) {
+                alert('No project selected!');
+                return;
+            }
+
+            if (recordedSteps.length === 0) {
+                alert('No steps recorded to save!');
+                return;
+            }
+
+            const pageName = document.getElementById('recorderPageSelect').value;
+            const testName = document.getElementById('recorderTestSelect').value;
+            const testCaseSelect = document.getElementById('recorderTestCase');
+            const testCaseValue = testCaseSelect.value;
+
+            // Get the actual test case name
+            let testCaseName;
+            let isNewTestCase = false;
+
+            if (testCaseValue === '__new__') {
+                // Creating new test case
+                testCaseName = document.getElementById('newTestCaseName').value.trim();
+                isNewTestCase = true;
+
+                if (!testCaseName) {
+                    alert('Please enter a name for the new test case.');
+                    return;
+                }
+            } else if (testCaseValue === '' || !testCaseValue) {
+                alert('Please select a test case or create a new one.');
+                return;
+            } else {
+                // Using existing test case
+                testCaseName = testCaseValue;
+                isNewTestCase = false;
+            }
+
+            if (!pageName || !testName || !testCaseName) {
+                alert('Please select Page Object, Test Spec, and Test Case.');
+                return;
+            }
+
+            // Only validate for duplicates if creating a NEW test case
+            if (isNewTestCase) {
+                for (const [suiteName, suite] of Object.entries(currentProject.tests)) {
+                    if (suite.testCases && suite.testCases.some(tc => tc.name === testCaseName)) {
+                        alert(`❌ Test case name "${testCaseName}" already exists in suite "${suiteName}".\n\nPlease choose a different name.`);
+                        return;
+                    }
+                }
+            }
+
             const testSpec = currentProject.tests[testName];
             if (!testSpec) {
-                alert(`Test Spec "${testName}" not found!`);
+                alert(`Test spec "${testName}" not found!`);
                 return;
             }
 
@@ -956,59 +1324,71 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 testSpec.testCases = [];
             }
 
-            console.log('Test Spec before update:', JSON.stringify(testSpec, null, 2));
+            // Find existing test case or create new one
+            let existingCaseIndex = testSpec.testCases.findIndex(tc => tc.name === testCaseName);
 
-            // Find existing test case or add new one
-            const existingCaseIndex = testSpec.testCases.findIndex(tc => tc.name === testCaseName);
+            if (existingCaseIndex >= 0) {
+                // Update existing test case - APPEND new steps to existing ones
+                const existingCase = testSpec.testCases[existingCaseIndex];
 
-            if (existingCaseIndex !== -1) {
-                // Update existing test case
-                testSpec.testCases[existingCaseIndex] = {
-                    ...testSpec.testCases[existingCaseIndex],
-                    steps: recordedSteps,
-                    updatedAt: Date.now()
-                };
-                console.log('Updated existing test case:', testCaseName);
+                // Ask user if they want to append or replace
+                const userChoice = confirm(
+                    `Test case "${testCaseName}" already has ${existingCase.steps?.length || 0} step(s).\n\n` +
+                    `Click OK to APPEND ${recordedSteps.length} new step(s)\n` +
+                    `Click Cancel to REPLACE all steps`
+                );
+
+                if (userChoice) {
+                    // Append new steps
+                    existingCase.steps = [...(existingCase.steps || []), ...recordedSteps];
+                    console.log(`✅ Appended ${recordedSteps.length} steps to existing test case "${testCaseName}"`);
+                } else {
+                    // Replace all steps
+                    existingCase.steps = recordedSteps;
+                    console.log(`✅ Replaced steps in test case "${testCaseName}"`);
+                }
+
+                existingCase.updatedAt = Date.now();
             } else {
-                // Add new test case
+                // Create new test case
                 testSpec.testCases.push({
                     name: testCaseName,
                     steps: recordedSteps,
-                    data: null,
                     createdAt: Date.now()
                 });
-                console.log('Added new test case:', testCaseName);
+                console.log(`✅ Created new test case "${testCaseName}" with ${recordedSteps.length} steps`);
             }
 
-            // Update ONLY the test spec using projectManager
-            // This is safer than updating the whole project
-            await projectManager.updateTestSpec(currentProject.id, testName, {
-                testCases: testSpec.testCases
+            // Ensure pageNames is set (for multiple page object support)
+            if (!testSpec.pageNames || !Array.isArray(testSpec.pageNames)) {
+                testSpec.pageNames = testSpec.pageName ? [testSpec.pageName] : [];
+            }
+            if (!testSpec.pageNames.includes(pageName)) {
+                testSpec.pageNames.push(pageName);
+            }
+
+            // Update the project
+            currentProject.tests[testName] = testSpec;
+            await projectManager.updateProject(currentProject.id, {
+                tests: currentProject.tests
             });
 
-            console.log('Test Spec updated successfully');
+            alert(`✅ Test case "${testCaseName}" saved successfully with ${recordedSteps.length} step(s)!`);
 
-            // Reload current project to get fresh state
-            await loadCurrentProject();
+            // Update UI
+            updateTestsList();
+            updateRecorderSelects();
 
-            alert(`✅ Success! Test case "${testCaseName}" saved with ${recordedSteps.length} steps.\n\nYou can now:\n• View the code in the Tests tab\n• Export your project\n• Run the test`);
+            // Clear recorded steps
+            recordedSteps = [];
+            document.getElementById('stepsList').innerHTML = '';
+            document.getElementById('generatedCode').textContent = '// Code will appear here...';
 
-            // Hide generate button
-            const generateBtn = document.getElementById('generateCodeBtn');
-            if (generateBtn) {
-                generateBtn.style.display = 'none';
-            }
-
-            // Clear the recorder for next test
-            // Uncomment if you want to auto-clear after saving:
-            // clearSteps();
         } catch (err) {
             console.error('Error saving code:', err);
             alert(`Failed to save test case: ${err.message}\n\nPlease check the console for details.`);
         }
-    }
-
-    function clearSteps() {
+    } function clearSteps() {
         recordedSteps = [];
         document.getElementById('stepsList').innerHTML = '';
         document.getElementById('generatedCode').textContent = '// Code will appear here...';
@@ -1027,13 +1407,12 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             return;
         }
 
-        const pageName = document.getElementById('recorderPageSelect').value;
         const testName = document.getElementById('recorderTestSelect').value;
 
-        // If page/test not selected, show generic step code
-        if (!pageName || !testName) {
+        // If test not selected, show generic step code
+        if (!testName) {
             let code = `// ${recordedSteps.length} steps recorded\n`;
-            code += `// Please select Page Object and Test Spec to see full test code\n\n`;
+            code += `// Please select a Test Spec to see full test code\n\n`;
             code += `// Recorded steps:\n`;
             recordedSteps.forEach((step, i) => {
                 code += `// ${i + 1}. ${step.action.toUpperCase()}`;
@@ -1049,12 +1428,12 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         const testSpec = currentProject.tests[testName];
 
         if (!pageObject) {
-            codeDisplay.textContent = `// Error: Page Object "${pageName}" not found\n// Please select a valid Page Object`;
+            codeDisplay.textContent = `// Error: Page object "${pageName}" not found`;
             return;
         }
 
         if (!testSpec) {
-            codeDisplay.textContent = `// Error: Test Spec "${testName}" not found\n// Please select a valid Test Spec`;
+            codeDisplay.textContent = `// Error: Test spec "${testName}" not found`;
             return;
         }
 
@@ -1081,13 +1460,52 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             }];
         }
 
-        const generator = new CodeGenerator(currentProject.tool, currentProject.language);
-        const code = generator.generateTestSpec(tempTestSpec, pageObject);
+        // Validate tool and language
+        if (!currentProject.tool || !currentProject.language) {
+            currentProject.tool = currentProject.tool || 'playwright';
+            currentProject.language = currentProject.language || 'javascript';
+        }
 
-        if (!code || code.trim() === '') {
-            codeDisplay.textContent = '// Error generating code\n// Please check your project configuration';
-        } else {
-            codeDisplay.textContent = code;
+        // Collect all page objects for this test (handle both legacy and new format)
+        const pageObjects = {};
+        if (testSpec.pageNames && Array.isArray(testSpec.pageNames)) {
+            // New format: multiple page objects
+            testSpec.pageNames.forEach(pName => {
+                const pObj = currentProject.pages[pName];
+                if (pObj) {
+                    pageObjects[pName] = pObj;
+                }
+            });
+        } else if (testSpec.pageName) {
+            // Legacy format: single page object
+            const pObj = currentProject.pages[testSpec.pageName];
+            if (pObj) {
+                pageObjects[testSpec.pageName] = pObj;
+            }
+        }
+
+        // If no page objects found from test spec, use the selected one
+        if (Object.keys(pageObjects).length === 0 && pageObject) {
+            pageObjects[pageName] = pageObject;
+        }
+
+        if (Object.keys(pageObjects).length === 0) {
+            codeDisplay.textContent = `// Error: No page objects found for test "${testName}"\n// Please ensure the test has associated page objects`;
+            return;
+        }
+
+        try {
+            const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+            const code = generator.generateTestSpec(tempTestSpec, pageObjects);
+
+            if (!code || code.trim() === '') {
+                codeDisplay.textContent = '// Error generating code\n// Please check your project configuration';
+            } else {
+                codeDisplay.textContent = code;
+            }
+        } catch (err) {
+            console.error('Error generating code:', err);
+            codeDisplay.textContent = `// Error generating code: ${err.message}\n// Please check the console for details`;
         }
     }
 
@@ -1095,6 +1513,87 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     chrome.runtime.onMessage.addListener((message) => {
         if (message.type === 'RECORDED_STEP') {
             const step = message.step;
+
+            // Try to match step with existing Page Object elements
+            if (currentProject) {
+                const testName = document.getElementById('recorderTestSelect').value;
+                const testSpec = currentProject.tests[testName];
+                let matched = false;
+
+                // 1. Check associated pages first (if any)
+                if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                    for (const pageName of testSpec.pageNames) {
+                        const page = currentProject.pages[pageName];
+                        if (!page) continue;
+
+                        for (const [elName, elData] of Object.entries(page.elements)) {
+                            if (elData.selector === step.selector) {
+                                step.pageName = pageName;
+                                step.elementName = elName; // Use the PO's element name
+                                matched = true;
+                                console.log(`Matched step to ${pageName}.${elName}`);
+                                break;
+                            }
+                        }
+                        if (matched) break;
+                    }
+                }
+
+                // 2. If not matched, check the currently selected page (if different)
+                if (!matched) {
+                    const currentPageName = document.getElementById('recorderPageSelect').value;
+                    const page = currentProject.pages[currentPageName];
+                    if (page) {
+                        for (const [elName, elData] of Object.entries(page.elements)) {
+                            if (elData.selector === step.selector) {
+                                step.pageName = currentPageName;
+                                step.elementName = elName;
+                                matched = true;
+                                console.log(`Matched step to ${currentPageName}.${elName}`);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Missing Page Object Detection (URL based)
+            if (currentProject && step.url) {
+                // We don't have a selected page anymore, so we check against all pages in the project
+                // or prioritize pages in the current test spec if possible.
+                const testName = document.getElementById('recorderTestSelect').value;
+                const testSpec = currentProject.tests[testName];
+
+                // Find potential page matches
+                let matchedPageName = null;
+
+                // 1. Check associated pages first
+                if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                    matchedPageName = testSpec.pageNames.find(pName => {
+                        const p = currentProject.pages[pName];
+                        return p && (step.url.includes(p.url) || p.url.includes(step.url));
+                    });
+                }
+
+                // 2. If no associated page matches, check all pages
+                if (!matchedPageName) {
+                    matchedPageName = Object.keys(currentProject.pages).find(pName => {
+                        const p = currentProject.pages[pName];
+                        return step.url.includes(p.url) || p.url.includes(step.url);
+                    });
+                }
+
+                if (!matchedPageName) {
+                    // No page matches! Prompt to create.
+                    console.warn('Step recorded on unknown URL:', step.url);
+
+                    // Check if we already prompted recently to avoid spam
+                    if (!window.lastMissingPagePrompt || Date.now() - window.lastMissingPagePrompt > 5000) {
+                        window.lastMissingPagePrompt = Date.now();
+                        // Optional: Prompt logic here (commented out to avoid blocking flow too much)
+                    }
+                }
+            }
 
             // Add annotation if set
             const annotation = document.getElementById('stepAnnotation').value;
@@ -1118,11 +1617,44 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         }
     });
 
+    // Helper function to check if selector is used in other page objects
+    function isSelectorUsedInOtherPages(selector, currentPageName) {
+        for (const [pageName, pageObj] of Object.entries(currentProject.pages)) {
+            if (pageName === currentPageName) continue;
+            for (const [elemName, elem] of Object.entries(pageObj.elements || {})) {
+                if (elem.selector === selector) {
+                    return { pageName, elementName: elemName };
+                }
+            }
+        }
+        return null;
+    }
+
     // Auto-populate Page Object with elements from recorded steps
     async function autoPopulatePageObject(step) {
         if (!currentProject) return;
 
-        const pageName = document.getElementById('recorderPageSelect').value;
+        // Infer page object from step metadata (set during recording)
+        // or try to find it in the current test spec
+        let pageName = step.pageName;
+
+        if (!pageName) {
+            const testName = document.getElementById('recorderTestSelect').value;
+            const testSpec = currentProject.tests[testName];
+
+            if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                // Try to match URL to one of the associated pages
+                pageName = testSpec.pageNames.find(pName => {
+                    const p = currentProject.pages[pName];
+                    return p && (step.url.includes(p.url) || p.url.includes(step.url));
+                });
+
+                // Fallback to first associated page if no URL match (risky but better than nothing?)
+                // Or maybe just don't auto-populate if we can't be sure.
+                // Let's stick to URL matching for safety.
+            }
+        }
+
         if (!pageName) return;
 
         const pageObject = currentProject.pages[pageName];
@@ -1131,8 +1663,15 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         // Only add elements for actions that interact with elements
         if (!step.selector || !step.elementName) return;
 
-        // Check if element already exists
+        // Check if element already exists in current page
         if (pageObject.elements[step.elementName]) return;
+
+        // Check if selector is used in other page objects
+        const duplicateInfo = isSelectorUsedInOtherPages(step.selector, pageName);
+        if (duplicateInfo) {
+            console.warn(`⚠️ Selector "${step.selector}" is already used in page "${duplicateInfo.pageName}" as "${duplicateInfo.elementName}". Skipping auto-add to avoid duplication.`);
+            return;
+        }
 
         // Determine element type from action
         let elementType = 'button';
@@ -1190,6 +1729,8 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                     item.title = error || 'Step failed';
                 }
             }
+        } else if (message.type === 'REPLAY_COMPLETE') {
+            resetReplayButtons();
         }
     });
 
@@ -1274,6 +1815,14 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             const pageObject = currentProject.pages[name];
             console.log('Page Object:', pageObject);
 
+            // Validate tool and language
+            if (!currentProject.tool || !currentProject.language) {
+                console.warn('Project tool or language missing in viewPageObject, defaulting...');
+                currentProject.tool = currentProject.tool || 'playwright';
+                currentProject.language = currentProject.language || 'javascript';
+                alert('Warning: Project configuration missing. Defaulting to Playwright/JavaScript.');
+            }
+
             const generator = new CodeGenerator(currentProject.tool, currentProject.language);
             const code = generator.generatePageObject(pageObject);
 
@@ -1315,18 +1864,40 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
         try {
             const testSpec = currentProject.tests[name];
-            const pageObject = currentProject.pages[testSpec.pageName];
+            const pageObjects = {};
+
+            // Collect all associated page objects
+            if (testSpec.pageNames && Array.isArray(testSpec.pageNames)) {
+                testSpec.pageNames.forEach(pName => {
+                    if (currentProject.pages[pName]) {
+                        pageObjects[pName] = currentProject.pages[pName];
+                    }
+                });
+            } else if (testSpec.pageName) {
+                // Legacy support
+                if (currentProject.pages[testSpec.pageName]) {
+                    pageObjects[testSpec.pageName] = currentProject.pages[testSpec.pageName];
+                }
+            }
 
             console.log('Test Spec:', testSpec);
-            console.log('Page Object:', pageObject);
+            console.log('Page Objects:', pageObjects);
 
-            if (!pageObject) {
-                alert(`Associated Page Object "${testSpec.pageName}" not found!`);
+            if (Object.keys(pageObjects).length === 0) {
+                alert(`No associated Page Objects found for "${name}"!`);
                 return;
             }
 
+            // Validate tool and language
+            if (!currentProject.tool || !currentProject.language) {
+                console.warn('Project tool or language missing in viewTest, defaulting...');
+                currentProject.tool = currentProject.tool || 'playwright';
+                currentProject.language = currentProject.language || 'javascript';
+                alert('Warning: Project configuration missing. Defaulting to Playwright/JavaScript.');
+            }
+
             const generator = new CodeGenerator(currentProject.tool, currentProject.language);
-            const code = generator.generateTestSpec(testSpec, pageObject);
+            const code = generator.generateTestSpec(testSpec, pageObjects);
 
             console.log('Generated code:', code);
 
@@ -1374,9 +1945,32 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 return;
             }
 
-            const pageObject = currentProject.pages[testSpec.pageName];
-            if (!pageObject) {
-                alert(`Associated Page Object "${testSpec.pageName}" not found!`);
+            // Collect all page objects for this test (handle both legacy and new format)
+            const pageObjects = {};
+            if (testSpec.pageNames && Array.isArray(testSpec.pageNames)) {
+                // New format: multiple page objects
+                testSpec.pageNames.forEach(pName => {
+                    const pObj = currentProject.pages[pName];
+                    if (pObj) {
+                        pageObjects[pName] = pObj;
+                    } else {
+                        console.warn(`Page object "${pName}" not found for test: ${testName}`);
+                    }
+                });
+            } else if (testSpec.pageName) {
+                // Legacy format: single page object
+                const pObj = currentProject.pages[testSpec.pageName];
+                if (pObj) {
+                    pageObjects[testSpec.pageName] = pObj;
+                } else {
+                    console.warn(`Page object "${testSpec.pageName}" not found for test: ${testName}`);
+                }
+            }
+
+            if (Object.keys(pageObjects).length === 0) {
+                // Try to use the pageName from the test case itself if available (future proofing)
+                // Or fallback to checking if there's at least one page object in the project
+                alert(`No page objects found for test "${testName}"!\\n\\nPlease ensure the test has associated page objects.`);
                 return;
             }
 
@@ -1386,8 +1980,16 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 testCases: [testCase]
             };
 
+            // Validate tool and language
+            if (!currentProject.tool || !currentProject.language) {
+                console.warn('Project tool or language missing in viewTestCase, defaulting...');
+                currentProject.tool = currentProject.tool || 'playwright';
+                currentProject.language = currentProject.language || 'javascript';
+                alert('Warning: Project configuration missing. Defaulting to Playwright/JavaScript.');
+            }
+
             const generator = new CodeGenerator(currentProject.tool, currentProject.language);
-            const code = generator.generateTestSpec(tempTestSpec, pageObject);
+            const code = generator.generateTestSpec(tempTestSpec, pageObjects);
 
             console.log('Generated code:', code);
 
@@ -1496,4 +2098,9 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             alert('Code copied to clipboard!');
         });
     }
+
+
+    // Initialize
+    loadProjects();
+    loadCurrentProject();
 });
