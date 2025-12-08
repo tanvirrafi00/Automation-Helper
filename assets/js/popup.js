@@ -1755,29 +1755,31 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                         step.assertions = [{ type: assertionType }];
                     }
 
-                    // Improved deduplication: check last 3 steps for exact duplicates
-                    const lastSteps = recordedSteps.slice(-3); // Only check last 3 steps for performance
-                    const isDuplicate = lastSteps.some(existingStep => {
-                        // For regular steps, check if same action + selector
-                        if (step.action !== 'assertion' && existingStep.action !== 'assertion') {
-                            return (
-                                existingStep.action === step.action &&
-                                existingStep.selector === step.selector &&
-                                existingStep.value === step.value
+                    // IMPROVED: Only check if this is an IMMEDIATE duplicate of the last step
+                    // This prevents blocking legitimate sequences like: click → fill on same element
+                    const lastStep = recordedSteps[recordedSteps.length - 1];
+                    let isDuplicate = false;
+
+                    if (lastStep) {
+                        // For regular steps, check if EXACT same action + selector + value
+                        if (step.action !== 'assertion' && lastStep.action !== 'assertion') {
+                            isDuplicate = (
+                                lastStep.action === step.action &&
+                                lastStep.selector === step.selector &&
+                                lastStep.value === step.value
                             );
                         }
                         // For assertion steps, check if same type + selector
-                        if (step.action === 'assertion' && existingStep.action === 'assertion') {
-                            return (
-                                existingStep.type === step.type &&
-                                existingStep.selector === step.selector
+                        else if (step.action === 'assertion' && lastStep.action === 'assertion') {
+                            isDuplicate = (
+                                lastStep.type === step.type &&
+                                lastStep.selector === step.selector
                             );
                         }
-                        return false;
-                    });
+                    }
 
                     if (isDuplicate) {
-                        console.log('⚠️ Duplicate step detected, skipping:', step);
+                        console.log('⚠️ Duplicate step detected (immediate repeat), skipping:', step);
                         return; // Skip this duplicate step
                     }
 

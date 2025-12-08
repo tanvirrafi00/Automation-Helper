@@ -18,6 +18,15 @@ if (window.hasRun) {
     };
     (document.head || document.documentElement).appendChild(script);
 
+    // Inject SelectorConverter for test execution
+    const selectorConverterScript = document.createElement('script');
+    selectorConverterScript.src = chrome.runtime.getURL('src/utils/selectorConverter.js');
+    selectorConverterScript.onload = function () {
+        console.log('✅ SelectorConverter loaded in page context');
+        this.remove();
+    };
+    (document.head || document.documentElement).appendChild(selectorConverterScript);
+
     // Overlay management
     let overlay = null;
 
@@ -154,9 +163,114 @@ if (window.hasRun) {
             return true; // Async response
         } else if (message.type === 'GET_STATUS') {
             sendResponse({ isRecording, isReplaying });
+        } else if (message.type === 'EXECUTE_STEP') {
+            // Execute a test step
+            executeTestStep(message.step)
+                .then(result => sendResponse({ success: true, result }))
+                .catch(error => sendResponse({ success: false, error: error.message }));
+            return true; // Async response
+        } else if (message.type === 'CHECK_ELEMENT_EXISTS') {
+            // Check if element exists on page
+            try {
+                // Use SelectorConverter if available, otherwise standard querySelector
+                const element = window.SelectorConverter
+                    ? SelectorConverter.findElement(message.selector)
+                    : document.querySelector(message.selector);
+                sendResponse({ exists: !!element });
+            } catch (error) {
+                sendResponse({ exists: false, error: error.message });
+            }
         }
         return true;
     });
+
+    /**
+     * Execute a single test step
+     * @param {Object} step - Step to execute
+     * @returns {Promise<Object>} - Execution result
+     */
+    async function executeTestStep(step) {
+        console.log(`Executing step: ${step.action} on ${step.selector}`);
+
+        try {
+            // Find element using SelectorConverter for role selectors
+            let element;
+
+            if (step.selector.startsWith('role=') || step.selector.startsWith('text=')) {
+                // Use SelectorConverter for Playwright-style selectors
+                if (window.SelectorConverter) {
+                    element = SelectorConverter.findElement(step.selector);
+                } else {
+                    throw new Error('SelectorConverter not loaded');
+                }
+            } else {
+                // Standard CSS selector
+                element = document.querySelector(step.selector);
+            }
+
+            if (!element) {
+                throw new Error(`Element not found: ${step.selector}`);
+            }
+
+            // Execute action based on step type
+            switch (step.action) {
+                case 'click':
+                    element.click();
+                    break;
+
+                case 'fill':
+                    if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                        element.value = step.value || '';
+                        // Trigger input event for frameworks
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else {
+                        throw new Error(`Cannot fill non-input element: ${element.tagName}`);
+                    }
+                    break;
+
+                case 'select':
+                    if (element.tagName === 'SELECT') {
+                        element.value = step.value || '';
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else {
+                        throw new Error(`Cannot select on non-select element: ${element.tagName}`);
+                    }
+                    break;
+
+                case 'navigate':
+                    window.location.href = step.value;
+                    // Wait for navigation
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    break;
+
+                case 'assertion':
+                    // Handle assertions
+                    if (step.type === 'toBeVisible') {
+                        const isVisible = element.offsetParent !== null;
+                        if (!isVisible) {
+                            throw new Error(`Assertion failed: Element is not visible`);
+                        }
+                    } else if (step.type === 'toHaveText') {
+                        const text = element.textContent.trim();
+                        if (text !== step.value) {
+                            throw new Error(`Assertion failed: Expected "${step.value}", got "${text}"`);
+                        }
+                    }
+                    break;
+
+                default:
+                    throw new Error(`Unknown action: ${step.action}`);
+            }
+
+            console.log(`✅ Step executed successfully`);
+            return { success: true };
+
+        } catch (error) {
+            console.error(`❌ Step execution failed:`, error);
+            throw error;
+        }
+    }
 
     // Replay recorded steps
     async function replaySteps(steps) {

@@ -37,7 +37,8 @@
     "web_accessible_resources": [
         {
             "resources": [
-                "src/content/interceptor.js"
+                "src/content/interceptor.js",
+                "src/utils/selectorConverter.js"
             ],
             "matches": [
                 "<all_urls>"
