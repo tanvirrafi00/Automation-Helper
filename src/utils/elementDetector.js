@@ -384,15 +384,14 @@ class ElementDetector {
         // Use SelectorEngine to get the best selector object
         const bestSelectorObj = this.selectorEngine.getBestSelector(element);
 
-        // We keep the 'selector' string property for backward compatibility
-        // but also store the full selector object
+        // CRITICAL: Only store the selector VALUE as a string, not the object
+        // This prevents data corruption where objects are stored instead of strings
         const selector = bestSelectorObj.value;
 
         return {
             name,
             type,
-            selector, // String representation
-            selectorObject: bestSelectorObj, // Full object with score and type
+            selector, // MUST be a string!
             text: element.textContent?.trim().substring(0, 50) || '',
             placeholder: element.placeholder || '',
             id: element.id || '',

@@ -1767,23 +1767,41 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         if (!currentProject) return;
 
         // Infer page object from step metadata (set during recording)
-        // or try to find it in the current test spec
+        // or try to find it by matching URL
         let pageName = step.pageName;
 
-        if (!pageName) {
-            const testName = document.getElementById('recorderTestSelect').value;
-            const testSpec = currentProject.tests[testName];
+        if (!pageName && step.url) {
+            // ENHANCED: Check ALL pages in project by URL, not just test spec pages
+            console.log(`🔍 No pageName set, searching by URL: ${step.url}`);
+
+            // First, try to match against test spec pages (if available)
+            const testName = document.getElementById('recorderTestSelect')?.value;
+            const testSpec = testName ? currentProject.tests[testName] : null;
 
             if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
-                // Try to match URL to one of the associated pages
                 pageName = testSpec.pageNames.find(pName => {
                     const p = currentProject.pages[pName];
-                    return p && (step.url.includes(p.url) || p.url.includes(step.url));
-                });
+                    if (!p || !p.url) return false;
 
-                // Fallback to first associated page if no URL match (risky but better than nothing?)
-                // Or maybe just don't auto-populate if we can't be sure.
-                // Let's stick to URL matching for safety.
+                    // Match if URLs are similar (contains or partial match)
+                    return step.url.includes(p.url) || p.url.includes(step.url);
+                });
+            }
+
+            // If still no match, search ALL pages in the project
+            if (!pageName) {
+                console.log(`🔍 Not found in test spec pages, searching ALL pages...`);
+
+                for (const [pName, pageObj] of Object.entries(currentProject.pages)) {
+                    if (!pageObj.url) continue;
+
+                    // Match if URLs are similar
+                    if (step.url.includes(pageObj.url) || pageObj.url.includes(step.url)) {
+                        pageName = pName;
+                        console.log(`✅ Found matching page by URL: ${pName} (${pageObj.url})`);
+                        break;
+                    }
+                }
             }
         }
 
