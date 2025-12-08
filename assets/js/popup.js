@@ -1639,10 +1639,41 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 if (!matched) {
                     console.warn(`❌ No Page Object match found for selector: "${step.selector}"`);
 
-                    // CRITICAL: Set pageName and elementName so auto-populate can add this element
-                    // Try to infer page name from test spec
-                    if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
-                        step.pageName = testSpec.pageNames[0]; // Use first associated page
+                    // CRITICAL: Use URL to find the correct page, don't just default to first page!
+                    let matchedPageName = null;
+
+                    if (step.url && testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                        // Try to match step URL to page URL
+                        matchedPageName = testSpec.pageNames.find(pName => {
+                            const pageObj = currentProject.pages[pName];
+                            if (!pageObj || !pageObj.url) return false;
+
+                            // Match if URLs are similar
+                            return step.url.includes(pageObj.url) || pageObj.url.includes(step.url);
+                        });
+                    }
+
+                    // If no URL match, search ALL pages in project
+                    if (!matchedPageName && step.url) {
+                        for (const [pName, pageObj] of Object.entries(currentProject.pages)) {
+                            if (!pageObj.url) continue;
+
+                            if (step.url.includes(pageObj.url) || pageObj.url.includes(step.url)) {
+                                matchedPageName = pName;
+                                console.log(`✅ Found page by URL: ${pName} for ${step.url}`);
+                                break;
+                            }
+                        }
+                    }
+
+                    // Only if we still have no match, use first page as last resort
+                    if (!matchedPageName && testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                        matchedPageName = testSpec.pageNames[0];
+                        console.warn(`⚠️ No URL match found, defaulting to first page: ${matchedPageName}`);
+                    }
+
+                    if (matchedPageName) {
+                        step.pageName = matchedPageName;
 
                         // Generate element name from selector or element type
                         if (!step.elementName) {
