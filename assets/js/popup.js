@@ -6,6 +6,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isRecording = false;
     let recordedSteps = [];
 
+    // Test Execution
+    let testExecutor = null;
+    let stepTracker = null;
+    let currentTestExecution = null;
+
+    // Initialize test execution components
+    if (typeof BrowserTestExecutor !== 'undefined') {
+        testExecutor = new BrowserTestExecutor();
+        console.log('✅ BrowserTestExecutor initialized');
+    }
+
+    if (typeof StepExecutionTracker !== 'undefined') {
+        stepTracker = new StepExecutionTracker();
+        console.log('✅ StepExecutionTracker initialized');
+    }
+
     /**
      * Removes duplicate steps from an array of steps
      * @param {Array} steps - Array of step objects
@@ -1058,6 +1074,39 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             }
         });
 
+        // Test Execution Buttons
+        const runTestBtn = document.getElementById('runTestBtn');
+        const cancelTestBtn = document.getElementById('cancelTestBtn');
+        const closeResultsBtn = document.getElementById('closeResultsBtn');
+        const exportResultsBtn = document.getElementById('exportResultsBtn');
+
+        if (runTestBtn) {
+            runTestBtn.addEventListener('click', async () => {
+                await runTest();
+            });
+        }
+
+        if (cancelTestBtn) {
+            cancelTestBtn.addEventListener('click', () => {
+                if (testExecutor) {
+                    testExecutor.cancel();
+                    console.log('⏹ Test execution cancelled');
+                }
+            });
+        }
+
+        if (closeResultsBtn) {
+            closeResultsBtn.addEventListener('click', () => {
+                document.getElementById('resultsPanel').style.display = 'none';
+            });
+        }
+
+        if (exportResultsBtn) {
+            exportResultsBtn.addEventListener('click', () => {
+                exportTestResults();
+            });
+        }
+
         // Dark Mode Toggle
         const themeToggle = document.getElementById('themeToggle');
         if (themeToggle) {
@@ -1434,369 +1483,553 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 recordedSteps = [];
                 document.getElementById('stepsList').innerHTML = '';
                 document.getElementById('generatedCode').textContent = '// Code will appear here...';
+                // Hide run button when steps are cleared
+                const runBtn = document.getElementById('runTestBtn');
+                if (runBtn) runBtn.style.display = 'none';
             }
 
-    function generateCode() {
-                console.log('🔧 generateCode called. Steps:', recordedSteps.length);
-                const codeDisplay = document.getElementById('generatedCode');
+    // ===== TEST EXECUTION FUNCTIONS =====
 
-                if (!currentProject) {
-                    console.warn('⚠️ No project selected');
-                    codeDisplay.textContent = '// Please create or select a project first';
+    /**
+     * Run the currently recorded test
+     */
+    async function runTest() {
+                if (!testExecutor) {
+                    alert('Test executor not initialized!');
                     return;
                 }
 
                 if (recordedSteps.length === 0) {
-                    console.warn('⚠️ No steps to generate code from');
-                    codeDisplay.textContent = '// Start recording to see generated code...';
+                    alert('No steps to execute!');
                     return;
                 }
 
-                const testName = document.getElementById('recorderTestSelect').value;
-                console.log('🎯 Test selected:', testName);
+                console.log('🚀 Starting test execution...');
 
-                // If test not selected, show generic step code
-                if (!testName) {
-                    console.warn('⚠️ No test selected, showing generic code');
-                    let code = `// ${recordedSteps.length} steps recorded\n`;
-                    code += `// Please select a Test Spec to see full test code\n\n`;
-                    code += `// Recorded steps:\n`;
-                    recordedSteps.forEach((step, i) => {
-                        code += `// ${i + 1}. ${step.action.toUpperCase()}`;
-                        if (step.selector) code += ` → ${step.selector}`;
-                        if (step.value) code += ` = "${step.value}"`;
-                        code += `\n`;
-                    });
-                    codeDisplay.textContent = code;
+                // Get active tab
+                const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (tabs.length === 0) {
+                    alert('No active tab found!');
                     return;
                 }
 
-                const testSpec = currentProject.tests[testName];
+                const tabId = tabs[0].id;
 
-                if (!testSpec) {
-                    console.error('❌ Test spec not found:', testName);
-                    codeDisplay.textContent = `// Error: Test spec "${testName}" not found`;
-                    return;
+                // Show cancel button, hide run button
+                document.getElementById('runTestBtn').style.display = 'none';
+                document.getElementById('cancelTestBtn').style.display = 'inline-flex';
+
+                // Initialize step tracker
+                if (stepTracker) {
+                    stepTracker.initialize(recordedSteps);
                 }
 
-                // Infer pageName from test spec
-                let pageName = null;
-                if (testSpec.pageNames && testSpec.pageNames.length > 0) {
-                    pageName = testSpec.pageNames[0];
-                } else if (testSpec.pageName) {
-                    pageName = testSpec.pageName;
-                }
-
-                // Generate full test code
-                const testCaseName = document.getElementById('recorderTestCase').value || 'Recorded Test';
-
-                // Create a temporary test spec with recorded steps
-                const tempTestSpec = JSON.parse(JSON.stringify(testSpec));
-
-                // Find or create test case
-                let targetCase = tempTestSpec.testCases.find(tc => tc.name === testCaseName);
-                if (!targetCase && tempTestSpec.testCases.length > 0) {
-                    targetCase = tempTestSpec.testCases[0];
-                }
-
-                if (targetCase) {
-                    targetCase.steps = recordedSteps;
-                } else {
-                    // Create a new test case if none exist
-                    tempTestSpec.testCases = [{
-                        name: testCaseName,
-                        steps: recordedSteps,
-                        createdAt: Date.now()
-                    }];
-                }
-
-                // Validate tool and language
-                if (!currentProject.tool || !currentProject.language) {
-                    currentProject.tool = currentProject.tool || 'playwright';
-                    currentProject.language = currentProject.language || 'javascript';
-                }
-
-                // Collect all page objects for this test (handle both legacy and new format)
-                const pageObjects = {};
-                if (testSpec.pageNames && Array.isArray(testSpec.pageNames)) {
-                    // New format: multiple page objects
-                    testSpec.pageNames.forEach(pName => {
-                        const pObj = currentProject.pages[pName];
-                        if (pObj) {
-                            pageObjects[pName] = pObj;
-                        }
-                    });
-                } else if (testSpec.pageName) {
-                    // Legacy format: single page object
-                    const pObj = currentProject.pages[testSpec.pageName];
-                    if (pObj) {
-                        pageObjects[testSpec.pageName] = pObj;
-                    }
-                }
-
-                // If no page objects found from test spec, use the selected one
-                if (Object.keys(pageObjects).length === 0 && pageObject) {
-                    pageObjects[pageName] = pageObject;
-                }
-
-                if (Object.keys(pageObjects).length === 0) {
-                    codeDisplay.textContent = `// Error: No page objects found for test "${testName}"\n// Please ensure the test has associated page objects`;
-                    return;
-                }
+                // Create test case object
+                const testCase = {
+                    name: document.getElementById('recorderTestCase')?.value || 'Recorded Test',
+                    steps: recordedSteps
+                };
 
                 try {
-                    const generator = new CodeGenerator(currentProject.tool, currentProject.language);
-                    const code = generator.generateTestSpec(tempTestSpec, pageObjects);
+                    // Execute test
+                    const result = await testExecutor.executeTestCase(testCase, {}, tabId);
 
-                    if (!code || code.trim() === '') {
-                        codeDisplay.textContent = '// Error generating code\n// Please check your project configuration';
-                    } else {
-                        codeDisplay.textContent = code;
+                    console.log('✅ Test execution complete:', result);
+
+                    // Update step tracker
+                    if (stepTracker) {
+                        stepTracker.complete(result.status === 'passed');
                     }
-                } catch (err) {
-                    console.error('Error generating code:', err);
-                    codeDisplay.textContent = `// Error generating code: ${err.message}\n// Please check the console for details`;
+
+                    // Render results
+                    renderResults(result);
+
+                    // Show results panel
+                    document.getElementById('resultsPanel').style.display = 'block';
+
+                } catch (error) {
+                    console.error('❌ Test execution error:', error);
+                    alert(`Test execution failed: ${error.message}`);
+                } finally {
+                    // Reset buttons
+                    document.getElementById('runTestBtn').style.display = 'inline-flex';
+                    document.getElementById('cancelTestBtn').style.display = 'none';
                 }
             }
 
-    // Listen for recorded steps from content script
-    chrome.runtime.onMessage.addListener((message) => {
-                if (message.type === 'RECORDED_STEP') {
-                    console.log('📝 RECORDED_STEP received:', message.step);
-                    const step = message.step;
+    /**
+     * Render test results in the results panel
+     */
+    function renderResults(result) {
+                const resultsContent = document.getElementById('resultsContent');
+                if (!resultsContent) return;
 
-                    // Try to match step with existing Page Object elements
-                    if (currentProject) {
-                        const testName = document.getElementById('recorderTestSelect').value;
-                        console.log('🎯 Current test:', testName);
-                        const testSpec = currentProject.tests[testName];
-                        let matched = false;
+                const passedSteps = result.steps.filter(s => s.status === 'passed').length;
+                const failedSteps = result.steps.filter(s => s.status === 'failed').length;
+                const totalSteps = result.steps.length;
 
-                        // Helper function to check if two selectors might match the same element
-                        const selectorsMatch = (selector1, selector2) => {
-                            // Ensure both selectors are strings
-                            if (typeof selector1 !== 'string' || typeof selector2 !== 'string') {
-                                return false;
-                            }
+                const html = `
+            <!-- Summary Stats -->
+            <div class="test-summary">
+                <div class="summary-stat">
+                    <div class="summary-stat-value total">${totalSteps}</div>
+                    <div class="summary-stat-label">Total Steps</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-value passed">${passedSteps}</div>
+                    <div class="summary-stat-label">Passed</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-value failed">${failedSteps}</div>
+                    <div class="summary-stat-label">Failed</div>
+                </div>
+            </div>
 
-                            // Exact match
-                            if (selector1 === selector2) return true;
+            <!-- Test Case Result -->
+            <div class="test-case-result ${result.status}">
+                <div class="test-case-header">
+                    <div class="test-case-name">
+                        <span class="status-icon">${result.status === 'passed' ? '✅' : '❌'}</span>
+                        ${result.name}
+                    </div>
+                    <div class="test-case-meta">
+                        <span>Duration: ${(result.duration / 1000).toFixed(2)}s</span>
+                        <span>Status: ${result.status.toUpperCase()}</span>
+                    </div>
+                </div>
 
-                            // Check if one selector contains the other (for complex vs simple selectors)
-                            // e.g., "p-password#password > div > input" contains "#password"
-                            if (selector1.includes(selector2) || selector2.includes(selector1)) {
-                                return true;
-                            }
+                <!-- Step Results -->
+                <div class="step-results">
+                    ${result.steps.map((step, index) => `
+                        <div class="step-result-item ${step.status}">
+                            <div class="step-result-info">
+                                <div class="step-result-action">
+                                    Step ${step.index}: ${step.action} ${step.element || ''}
+                                </div>
+                                ${step.value ? `<div class="step-result-element">Value: "${step.value}"</div>` : ''}
+                                ${step.error ? `
+                                    <div class="step-error">
+                                        <div class="step-error-title">❌ Error:</div>
+                                        <div class="step-error-message">${step.error}</div>
+                                        ${step.screenshot ? `
+                                            <div class="step-screenshot-link">
+                                                <button class="btn btn-sm btn-secondary" onclick="showScreenshot('${step.screenshot}')">
+                                                    📷 View Screenshot
+                                                </button>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="step-result-meta">
+                                <span class="step-result-duration">${step.duration}ms</span>
+                                <span class="step-result-status ${step.status}">${step.status.toUpperCase()}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
 
-                            // Extract IDs and check if they match
-                            const id1Match = selector1.match(/#([a-zA-Z0-9_-]+)/);
-                            const id2Match = selector2.match(/#([a-zA-Z0-9_-]+)/);
-                            if (id1Match && id2Match && id1Match[1] === id2Match[1]) {
-                                return true;
-                            }
+                resultsContent.innerHTML = html;
+            }
 
+    /**
+     * Show screenshot in modal
+     */
+    window.showScreenshot = function (dataUrl) {
+                const modal = document.getElementById('screenshotModal');
+                const img = document.getElementById('screenshotImage');
+
+                if (modal && img) {
+                    img.src = dataUrl;
+                    modal.style.display = 'flex';
+                }
+            };
+
+        /**
+         * Export test results as JSON
+         */
+        function exportTestResults() {
+            if (!currentTestExecution) {
+                alert('No test results to export!');
+                return;
+            }
+
+            const dataStr = JSON.stringify(currentTestExecution, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `test-results-${Date.now()}.json`;
+            link.click();
+
+            URL.revokeObjectURL(url);
+            console.log('📤 Test results exported');
+        }
+
+        function generateCode() {
+            console.log('🔧 generateCode called. Steps:', recordedSteps.length);
+            const codeDisplay = document.getElementById('generatedCode');
+
+            if (!currentProject) {
+                console.warn('⚠️ No project selected');
+                codeDisplay.textContent = '// Please create or select a project first';
+                return;
+            }
+
+            if (recordedSteps.length === 0) {
+                console.warn('⚠️ No steps to generate code from');
+                codeDisplay.textContent = '// Start recording to see generated code...';
+                return;
+            }
+
+            const testName = document.getElementById('recorderTestSelect').value;
+            console.log('🎯 Test selected:', testName);
+
+            // If test not selected, show generic step code
+            if (!testName) {
+                console.warn('⚠️ No test selected, showing generic code');
+                let code = `// ${recordedSteps.length} steps recorded\n`;
+                code += `// Please select a Test Spec to see full test code\n\n`;
+                code += `// Recorded steps:\n`;
+                recordedSteps.forEach((step, i) => {
+                    code += `// ${i + 1}. ${step.action.toUpperCase()}`;
+                    if (step.selector) code += ` → ${step.selector}`;
+                    if (step.value) code += ` = "${step.value}"`;
+                    code += `\n`;
+                });
+                codeDisplay.textContent = code;
+                return;
+            }
+
+            const testSpec = currentProject.tests[testName];
+
+            if (!testSpec) {
+                console.error('❌ Test spec not found:', testName);
+                codeDisplay.textContent = `// Error: Test spec "${testName}" not found`;
+                return;
+            }
+
+            // Infer pageName from test spec
+            let pageName = null;
+            if (testSpec.pageNames && testSpec.pageNames.length > 0) {
+                pageName = testSpec.pageNames[0];
+            } else if (testSpec.pageName) {
+                pageName = testSpec.pageName;
+            }
+
+            // Generate full test code
+            const testCaseName = document.getElementById('recorderTestCase').value || 'Recorded Test';
+
+            // Create a temporary test spec with recorded steps
+            const tempTestSpec = JSON.parse(JSON.stringify(testSpec));
+
+            // Find or create test case
+            let targetCase = tempTestSpec.testCases.find(tc => tc.name === testCaseName);
+            if (!targetCase && tempTestSpec.testCases.length > 0) {
+                targetCase = tempTestSpec.testCases[0];
+            }
+
+            if (targetCase) {
+                targetCase.steps = recordedSteps;
+            } else {
+                // Create a new test case if none exist
+                tempTestSpec.testCases = [{
+                    name: testCaseName,
+                    steps: recordedSteps,
+                    createdAt: Date.now()
+                }];
+            }
+
+            // Validate tool and language
+            if (!currentProject.tool || !currentProject.language) {
+                currentProject.tool = currentProject.tool || 'playwright';
+                currentProject.language = currentProject.language || 'javascript';
+            }
+
+            // Collect all page objects for this test (handle both legacy and new format)
+            const pageObjects = {};
+            if (testSpec.pageNames && Array.isArray(testSpec.pageNames)) {
+                // New format: multiple page objects
+                testSpec.pageNames.forEach(pName => {
+                    const pObj = currentProject.pages[pName];
+                    if (pObj) {
+                        pageObjects[pName] = pObj;
+                    }
+                });
+            } else if (testSpec.pageName) {
+                // Legacy format: single page object
+                const pObj = currentProject.pages[testSpec.pageName];
+                if (pObj) {
+                    pageObjects[testSpec.pageName] = pObj;
+                }
+            }
+
+            // If no page objects found from test spec, use the selected one
+            if (Object.keys(pageObjects).length === 0 && pageObject) {
+                pageObjects[pageName] = pageObject;
+            }
+
+            if (Object.keys(pageObjects).length === 0) {
+                codeDisplay.textContent = `// Error: No page objects found for test "${testName}"\n// Please ensure the test has associated page objects`;
+                return;
+            }
+
+            try {
+                const generator = new CodeGenerator(currentProject.tool, currentProject.language);
+                const code = generator.generateTestSpec(tempTestSpec, pageObjects);
+
+                if (!code || code.trim() === '') {
+                    codeDisplay.textContent = '// Error generating code\n// Please check your project configuration';
+                } else {
+                    codeDisplay.textContent = code;
+                }
+            } catch (err) {
+                console.error('Error generating code:', err);
+                codeDisplay.textContent = `// Error generating code: ${err.message}\n// Please check the console for details`;
+            }
+        }
+
+        // Listen for recorded steps from content script
+        chrome.runtime.onMessage.addListener((message) => {
+            if (message.type === 'RECORDED_STEP') {
+                console.log('📝 RECORDED_STEP received:', message.step);
+                const step = message.step;
+
+                // Try to match step with existing Page Object elements
+                if (currentProject) {
+                    const testName = document.getElementById('recorderTestSelect').value;
+                    console.log('🎯 Current test:', testName);
+                    const testSpec = currentProject.tests[testName];
+                    let matched = false;
+
+                    // Helper function to check if two selectors might match the same element
+                    const selectorsMatch = (selector1, selector2) => {
+                        // Ensure both selectors are strings
+                        if (typeof selector1 !== 'string' || typeof selector2 !== 'string') {
                             return false;
-                        };
+                        }
 
-                        // 1. Check associated pages first (if any)
+                        // Exact match
+                        if (selector1 === selector2) return true;
+
+                        // Check if one selector contains the other (for complex vs simple selectors)
+                        // e.g., "p-password#password > div > input" contains "#password"
+                        if (selector1.includes(selector2) || selector2.includes(selector1)) {
+                            return true;
+                        }
+
+                        // Extract IDs and check if they match
+                        const id1Match = selector1.match(/#([a-zA-Z0-9_-]+)/);
+                        const id2Match = selector2.match(/#([a-zA-Z0-9_-]+)/);
+                        if (id1Match && id2Match && id1Match[1] === id2Match[1]) {
+                            return true;
+                        }
+
+                        return false;
+                    };
+
+                    // 1. Check associated pages first (if any)
+                    if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                        console.log('🔍 Checking associated pages:', testSpec.pageNames);
+                        for (const pageName of testSpec.pageNames) {
+                            const page = currentProject.pages[pageName];
+                            if (!page) {
+                                console.warn(`⚠️ Page "${pageName}" not found`);
+                                continue;
+                            }
+
+                            console.log(`🔍 Checking page "${pageName}" with ${Object.keys(page.elements).length} elements`);
+                            for (const [elName, elData] of Object.entries(page.elements)) {
+                                console.log(`  Comparing: PO="${elData.selector}" vs Step="${step.selector}"`);
+                                if (selectorsMatch(elData.selector, step.selector)) {
+                                    step.pageName = pageName;
+                                    step.elementName = elName; // Use the PO's element name
+                                    step.selector = elData.selector; // Use the PO's selector for consistency
+                                    matched = true;
+                                    console.log(`✅ MATCHED! ${pageName}.${elName}`);
+                                    break;
+                                }
+                            }
+                            if (matched) break;
+                        }
+                    }
+
+                    // 2. If not matched, check the currently selected page (if different)
+                    if (!matched) {
+                        console.log('⚠️ No match in associated pages, checking fallback');
+                        // Try to infer page name from test spec
+                        let currentPageName = null;
                         if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
-                            console.log('🔍 Checking associated pages:', testSpec.pageNames);
-                            for (const pageName of testSpec.pageNames) {
-                                const page = currentProject.pages[pageName];
-                                if (!page) {
-                                    console.warn(`⚠️ Page "${pageName}" not found`);
-                                    continue;
-                                }
+                            currentPageName = testSpec.pageNames[0];
+                        } else if (testSpec && testSpec.pageName) {
+                            currentPageName = testSpec.pageName;
+                        }
 
-                                console.log(`🔍 Checking page "${pageName}" with ${Object.keys(page.elements).length} elements`);
+                        if (currentPageName) {
+                            const page = currentProject.pages[currentPageName];
+                            if (page) {
                                 for (const [elName, elData] of Object.entries(page.elements)) {
-                                    console.log(`  Comparing: PO="${elData.selector}" vs Step="${step.selector}"`);
                                     if (selectorsMatch(elData.selector, step.selector)) {
-                                        step.pageName = pageName;
-                                        step.elementName = elName; // Use the PO's element name
-                                        step.selector = elData.selector; // Use the PO's selector for consistency
+                                        step.pageName = currentPageName;
+                                        step.elementName = elName;
+                                        step.selector = elData.selector; // Use the PO's selector
                                         matched = true;
-                                        console.log(`✅ MATCHED! ${pageName}.${elName}`);
+                                        console.log(`✅ MATCHED (fallback)! ${currentPageName}.${elName}`);
                                         break;
                                     }
                                 }
-                                if (matched) break;
-                            }
-                        }
-
-                        // 2. If not matched, check the currently selected page (if different)
-                        if (!matched) {
-                            console.log('⚠️ No match in associated pages, checking fallback');
-                            // Try to infer page name from test spec
-                            let currentPageName = null;
-                            if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
-                                currentPageName = testSpec.pageNames[0];
-                            } else if (testSpec && testSpec.pageName) {
-                                currentPageName = testSpec.pageName;
-                            }
-
-                            if (currentPageName) {
-                                const page = currentProject.pages[currentPageName];
-                                if (page) {
-                                    for (const [elName, elData] of Object.entries(page.elements)) {
-                                        if (selectorsMatch(elData.selector, step.selector)) {
-                                            step.pageName = currentPageName;
-                                            step.elementName = elName;
-                                            step.selector = elData.selector; // Use the PO's selector
-                                            matched = true;
-                                            console.log(`✅ MATCHED (fallback)! ${currentPageName}.${elName}`);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!matched) {
-                            console.warn(`❌ No Page Object match found for selector: "${step.selector}"`);
-
-                            // CRITICAL: Use URL to find the correct page, don't just default to first page!
-                            let matchedPageName = null;
-
-                            if (step.url && testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
-                                // Try to match step URL to page URL
-                                matchedPageName = testSpec.pageNames.find(pName => {
-                                    const pageObj = currentProject.pages[pName];
-                                    if (!pageObj || !pageObj.url) return false;
-
-                                    // Match if URLs are similar
-                                    return step.url.includes(pageObj.url) || pageObj.url.includes(step.url);
-                                });
-                            }
-
-                            // If no URL match, search ALL pages in project
-                            if (!matchedPageName && step.url) {
-                                for (const [pName, pageObj] of Object.entries(currentProject.pages)) {
-                                    if (!pageObj.url) continue;
-
-                                    if (step.url.includes(pageObj.url) || pageObj.url.includes(step.url)) {
-                                        matchedPageName = pName;
-                                        console.log(`✅ Found page by URL: ${pName} for ${step.url}`);
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // Only if we still have no match, use first page as last resort
-                            if (!matchedPageName && testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
-                                matchedPageName = testSpec.pageNames[0];
-                                console.warn(`⚠️ No URL match found, defaulting to first page: ${matchedPageName}`);
-                            }
-
-                            if (matchedPageName) {
-                                step.pageName = matchedPageName;
-
-                                // Generate element name from selector or element type
-                                if (!step.elementName) {
-                                    // Try to generate a meaningful name
-                                    const selectorParts = step.selector.split(/[>#\s.]+/).filter(p => p);
-                                    const lastPart = selectorParts[selectorParts.length - 1] || 'element';
-                                    const actionPrefix = step.action === 'fill' ? 'input' : step.action === 'click' ? 'button' : 'element';
-                                    step.elementName = `${lastPart}${actionPrefix.charAt(0).toUpperCase() + actionPrefix.slice(1)}`;
-                                }
-
-                                console.log(`🔧 Auto-assigning to page: ${step.pageName}, element: ${step.elementName}`);
                             }
                         }
                     }
 
-                    // Missing Page Object Detection (URL based)
-                    if (currentProject && step.url) {
-                        // We don't have a selected page anymore, so we check against all pages in the project
-                        // or prioritize pages in the current test spec if possible.
-                        const testName = document.getElementById('recorderTestSelect').value;
-                        const testSpec = currentProject.tests[testName];
+                    if (!matched) {
+                        console.warn(`❌ No Page Object match found for selector: "${step.selector}"`);
 
-                        // Find potential page matches
+                        // CRITICAL: Use URL to find the correct page, don't just default to first page!
                         let matchedPageName = null;
 
-                        // 1. Check associated pages first
-                        if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                        if (step.url && testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                            // Try to match step URL to page URL
                             matchedPageName = testSpec.pageNames.find(pName => {
-                                const p = currentProject.pages[pName];
-                                return p && (step.url.includes(p.url) || p.url.includes(step.url));
+                                const pageObj = currentProject.pages[pName];
+                                if (!pageObj || !pageObj.url) return false;
+
+                                // Match if URLs are similar
+                                return step.url.includes(pageObj.url) || pageObj.url.includes(step.url);
                             });
                         }
 
-                        // 2. If no associated page matches, check all pages
-                        if (!matchedPageName) {
-                            matchedPageName = Object.keys(currentProject.pages).find(pName => {
-                                const p = currentProject.pages[pName];
-                                return step.url.includes(p.url) || p.url.includes(step.url);
-                            });
-                        }
+                        // If no URL match, search ALL pages in project
+                        if (!matchedPageName && step.url) {
+                            for (const [pName, pageObj] of Object.entries(currentProject.pages)) {
+                                if (!pageObj.url) continue;
 
-                        if (!matchedPageName) {
-                            // No page matches! Prompt to create.
-                            console.warn('Step recorded on unknown URL:', step.url);
-
-                            // Check if we already prompted recently to avoid spam
-                            if (!window.lastMissingPagePrompt || Date.now() - window.lastMissingPagePrompt > 5000) {
-                                window.lastMissingPagePrompt = Date.now();
-                                // Optional: Prompt logic here (commented out to avoid blocking flow too much)
+                                if (step.url.includes(pageObj.url) || pageObj.url.includes(step.url)) {
+                                    matchedPageName = pName;
+                                    console.log(`✅ Found page by URL: ${pName} for ${step.url}`);
+                                    break;
+                                }
                             }
                         }
-                    }
 
-                    // Add annotation if set
-                    const annotation = document.getElementById('stepAnnotation').value;
-                    if (annotation) {
-                        step.annotations = annotation.split(',').map(a => a.trim());
-                    }
-
-                    // Add assertion if set
-                    const assertionType = document.getElementById('stepAssertion').value;
-                    if (assertionType) {
-                        step.assertions = [{ type: assertionType }];
-                    }
-
-                    // IMPROVED: Only check if this is an IMMEDIATE duplicate of the last step
-                    // This prevents blocking legitimate sequences like: click → fill on same element
-                    const lastStep = recordedSteps[recordedSteps.length - 1];
-                    let isDuplicate = false;
-
-                    if (lastStep) {
-                        // For regular steps, check if EXACT same action + selector + value
-                        if (step.action !== 'assertion' && lastStep.action !== 'assertion') {
-                            isDuplicate = (
-                                lastStep.action === step.action &&
-                                lastStep.selector === step.selector &&
-                                lastStep.value === step.value
-                            );
+                        // Only if we still have no match, use first page as last resort
+                        if (!matchedPageName && testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                            matchedPageName = testSpec.pageNames[0];
+                            console.warn(`⚠️ No URL match found, defaulting to first page: ${matchedPageName}`);
                         }
-                        // For assertion steps, check if same type + selector
-                        else if (step.action === 'assertion' && lastStep.action === 'assertion') {
-                            isDuplicate = (
-                                lastStep.type === step.type &&
-                                lastStep.selector === step.selector
-                            );
+
+                        if (matchedPageName) {
+                            step.pageName = matchedPageName;
+
+                            // Generate element name from selector or element type
+                            if (!step.elementName) {
+                                // Try to generate a meaningful name
+                                const selectorParts = step.selector.split(/[>#\s.]+/).filter(p => p);
+                                const lastPart = selectorParts[selectorParts.length - 1] || 'element';
+                                const actionPrefix = step.action === 'fill' ? 'input' : step.action === 'click' ? 'button' : 'element';
+                                step.elementName = `${lastPart}${actionPrefix.charAt(0).toUpperCase() + actionPrefix.slice(1)}`;
+                            }
+
+                            console.log(`🔧 Auto-assigning to page: ${step.pageName}, element: ${step.elementName}`);
                         }
                     }
-
-                    if (isDuplicate) {
-                        console.log('⚠️ Duplicate step detected (immediate repeat), skipping:', step);
-                        return; // Skip this duplicate step
-                    }
-
-                    console.log('✅ Adding step to recordedSteps. Current count:', recordedSteps.length);
-                    recordedSteps.push(step);
-                    console.log('✅ Step added. New count:', recordedSteps.length);
-                    addStepToList(step);
-
-                    // Auto-populate Page Object with elements from recorded steps
-                    // Use async IIFE to wait for completion before generating code
-                    (async () => {
-                        await autoPopulatePageObject(step);
-                        // Generate code after Page Object is updated
-                        generateCode();
-                    })();
                 }
-            });
+
+                // Missing Page Object Detection (URL based)
+                if (currentProject && step.url) {
+                    // We don't have a selected page anymore, so we check against all pages in the project
+                    // or prioritize pages in the current test spec if possible.
+                    const testName = document.getElementById('recorderTestSelect').value;
+                    const testSpec = currentProject.tests[testName];
+
+                    // Find potential page matches
+                    let matchedPageName = null;
+
+                    // 1. Check associated pages first
+                    if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                        matchedPageName = testSpec.pageNames.find(pName => {
+                            const p = currentProject.pages[pName];
+                            return p && (step.url.includes(p.url) || p.url.includes(step.url));
+                        });
+                    }
+
+                    // 2. If no associated page matches, check all pages
+                    if (!matchedPageName) {
+                        matchedPageName = Object.keys(currentProject.pages).find(pName => {
+                            const p = currentProject.pages[pName];
+                            return step.url.includes(p.url) || p.url.includes(step.url);
+                        });
+                    }
+
+                    if (!matchedPageName) {
+                        // No page matches! Prompt to create.
+                        console.warn('Step recorded on unknown URL:', step.url);
+
+                        // Check if we already prompted recently to avoid spam
+                        if (!window.lastMissingPagePrompt || Date.now() - window.lastMissingPagePrompt > 5000) {
+                            window.lastMissingPagePrompt = Date.now();
+                            // Optional: Prompt logic here (commented out to avoid blocking flow too much)
+                        }
+                    }
+                }
+
+                // Add annotation if set
+                const annotation = document.getElementById('stepAnnotation').value;
+                if (annotation) {
+                    step.annotations = annotation.split(',').map(a => a.trim());
+                }
+
+                // Add assertion if set
+                const assertionType = document.getElementById('stepAssertion').value;
+                if (assertionType) {
+                    step.assertions = [{ type: assertionType }];
+                }
+
+                // IMPROVED: Only check if this is an IMMEDIATE duplicate of the last step
+                // This prevents blocking legitimate sequences like: click → fill on same element
+                const lastStep = recordedSteps[recordedSteps.length - 1];
+                let isDuplicate = false;
+
+                if (lastStep) {
+                    // For regular steps, check if EXACT same action + selector + value
+                    if (step.action !== 'assertion' && lastStep.action !== 'assertion') {
+                        isDuplicate = (
+                            lastStep.action === step.action &&
+                            lastStep.selector === step.selector &&
+                            lastStep.value === step.value
+                        );
+                    }
+                    // For assertion steps, check if same type + selector
+                    else if (step.action === 'assertion' && lastStep.action === 'assertion') {
+                        isDuplicate = (
+                            lastStep.type === step.type &&
+                            lastStep.selector === step.selector
+                        );
+                    }
+                }
+
+                if (isDuplicate) {
+                    console.log('⚠️ Duplicate step detected (immediate repeat), skipping:', step);
+                    return; // Skip this duplicate step
+                }
+
+                console.log('✅ Adding step to recordedSteps. Current count:', recordedSteps.length);
+                recordedSteps.push(step);
+                console.log('✅ Step added. New count:', recordedSteps.length);
+                addStepToList(step);
+
+                // Auto-populate Page Object with elements from recorded steps
+                // Use async IIFE to wait for completion before generating code
+                (async () => {
+                    await autoPopulatePageObject(step);
+                    // Generate code after Page Object is updated
+                    generateCode();
+                })();
+            }
+        });
 
         // Helper function to check if selector is used in other page objects
         function isSelectorUsedInOtherPages(selector, currentPageName) {
@@ -2339,6 +2572,12 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             });
 
             list.appendChild(item);
+
+            // Show run test button when steps exist
+            const runBtn = document.getElementById('runTestBtn');
+            if (runBtn && recordedSteps.length > 0) {
+                runBtn.style.display = 'inline-flex';
+            }
         }
 
         function renderStepsList() {
