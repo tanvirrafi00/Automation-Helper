@@ -178,9 +178,28 @@
           </div>
         </div>
         <div class="recorded-steps" id="recordedSteps">
-          <h3>Recorded Steps</h3>
+          <div class="steps-header">
+            <h3>Recorded Steps</h3>
+            <button class="btn btn-success" id="runTestBtn" style="display:none;">▶️ Run Test</button>
+            <button class="btn btn-danger" id="cancelTestBtn" style="display:none;">⏹ Cancel</button>
+          </div>
           <ul id="stepsList"></ul>
         </div>
+
+        <!-- Test Results Panel -->
+        <div class="test-results-panel" id="resultsPanel" style="display:none;">
+          <div class="results-header">
+            <h3>Test Results</h3>
+            <div class="results-actions">
+              <button class="btn btn-secondary btn-sm" id="exportResultsBtn">📤 Export</button>
+              <button class="btn btn-secondary btn-sm" id="closeResultsBtn">✕ Close</button>
+            </div>
+          </div>
+          <div id="resultsContent" class="results-content">
+            <!-- Results will be rendered here -->
+          </div>
+        </div>
+
         <div class="generated-code">
           <h3>Generated Code</h3>
           <pre id="generatedCode">// Code will appear here...</pre>
@@ -396,12 +415,31 @@
     </div>
   </div>
 
+  <!-- Screenshot Viewer Modal -->
+  <div class="modal" id="screenshotModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Screenshot</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <img id="screenshotImage" style="width: 100%; height: auto;" alt="Test Screenshot" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-cancel">Close</button>
+        <button class="btn btn-primary" id="downloadScreenshotBtn">💾 Download</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="../../assets/js/jszip.min.js"></script>
   <script src="../utils/models.js"></script>
   <script src="../utils/codeGenerator.js"></script>
   <script src="../utils/projectManager.js"></script>
   <script src="../utils/dataMigration.js"></script>
+  <script src="../utils/browserTestExecutor.js"></script>
+  <script src="../utils/stepExecutionTracker.js"></script>
   <script src="../../assets/js/popup.js"></script>
 </body>
 
