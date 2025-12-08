@@ -6,6 +6,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isRecording = false;
     let recordedSteps = [];
 
+    /**
+     * Removes duplicate steps from an array of steps
+     * @param {Array} steps - Array of step objects
+     * @returns {Array} - Deduplicated array of steps
+     */
+    function deduplicateSteps(steps) {
+        const seen = new Map();
+        const deduplicated = [];
+
+        for (const step of steps) {
+            // Create a unique key for each step
+            let key;
+            if (step.action === 'assertion') {
+                key = `assertion:${step.type}:${step.selector}`;
+            } else {
+                key = `${step.action}:${step.selector}:${step.value || ''}`;
+            }
+
+            // Only add if we haven't seen this exact step before
+            if (!seen.has(key)) {
+                seen.set(key, true);
+                deduplicated.push(step);
+            }
+        }
+
+        return deduplicated;
+    }
+
     // DOM Elements
     const projectSelect = document.getElementById('projectSelect');
     const newProjectBtn = document.getElementById('newProjectBtn');
@@ -36,8 +64,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const session = response.session;
             // Restore session state
             if (session.steps && session.steps.length > 0) {
-                recordedSteps = session.steps;
-                recordedSteps.forEach(step => addStepToList(step));
+                recordedSteps = []; // Clear and let addStepToList populate
+                session.steps.forEach(step => addStepToList(step));
 
                 // Restore selections if possible
                 if (session.testName) document.getElementById('recorderTestSelect').value = session.testName;
@@ -397,43 +425,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 }
 
-                // Auto-select associated Page Object(s)
-                if (testSpec.pageNames && testSpec.pageNames.length > 0) {
-                    pageSelect.innerHTML = ''; // Clear current list
-
-                    testSpec.pageNames.forEach(pageName => {
-                        if (currentProject.pages[pageName]) {
-                            const option = document.createElement('option');
-                            option.value = pageName;
-                            option.textContent = pageName;
-                            pageSelect.appendChild(option);
-                        }
-                    });
-
-                    // Select the first one by default
-                    if (pageSelect.options.length > 0) {
-                        pageSelect.selectedIndex = 0;
-                    }
-                } else if (testSpec.pageName) {
-                    // Legacy support
-                    pageSelect.innerHTML = '';
-                    const option = document.createElement('option');
-                    option.value = testSpec.pageName;
-                    option.textContent = testSpec.pageName;
-                    pageSelect.appendChild(option);
-                    pageSelect.selectedIndex = 0;
-                }
-            } else {
-                // If no test suite selected (or invalid), reset page select to show all
-                pageSelect.innerHTML = '<option value="">Select Page Object</option>';
-                Object.keys(currentProject.pages).forEach(pageName => {
-                    const option = document.createElement('option');
-                    option.value = pageName;
-                    option.textContent = pageName;
-                    pageSelect.appendChild(option);
-                });
+                // Note: Page selection is now inferred from test spec, no manual selection needed
             }
         });
+
         // Handle "Create New Test Case" selection
         newTestCaseSelect.addEventListener('change', function () {
             if (this.value === '__new__') {
@@ -480,6 +475,19 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     }
 
     // Setup event listeners
+    // Modal helpers
+    function openModal(modal) {
+        if (modal) {
+            modal.style.display = 'block';
+        }
+    }
+
+    function closeModal(modal) {
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
     function setupEventListeners() {
         // Tab switching
         tabBtns.forEach(btn => {
@@ -868,8 +876,11 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                         // Add new pages if they don't exist
                         let addedCount = 0;
                         selectedPages.forEach(page => {
-                            if (!testSpec.pageNames.includes(page)) {
-                                testSpec.pageNames.push(page);
+                            // Ensure page is a string, not an HTML element
+                            const pageName = typeof page === 'string' ? page : (page.value || page.name || String(page));
+
+                            if (!testSpec.pageNames.includes(pageName)) {
+                                testSpec.pageNames.push(pageName);
                                 addedCount++;
                             }
                         });
@@ -1136,7 +1147,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
     // Recording functions
     function startRecording() {
-        const pageName = document.getElementById('recorderPageSelect').value;
+        // pageName is no longer manually selected, it's inferred from the test spec
         const testName = document.getElementById('recorderTestSelect').value;
         const testCaseSelect = document.getElementById('recorderTestCase');
         const testCaseValue = testCaseSelect.value;
@@ -1155,9 +1166,20 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             testCaseName = testCaseValue;
         }
 
-        if (!pageName || !testName || !testCaseName) {
-            alert('Please select Page Object, Test Spec, and Test Case.');
+        if (!testName || !testCaseName) {
+            alert('Please select Test Spec and Test Case.');
             return;
+        }
+
+        // Try to infer page name from test spec for context (optional)
+        let pageName = null;
+        if (currentProject && currentProject.tests[testName]) {
+            const testSpec = currentProject.tests[testName];
+            if (testSpec.pageNames && testSpec.pageNames.length > 0) {
+                pageName = testSpec.pageNames[0];
+            } else if (testSpec.pageName) {
+                pageName = testSpec.pageName;
+            }
         }
 
         // Validate test case name doesn't already exist (only for new test cases)
@@ -1217,7 +1239,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 // Now send the start recording message
                 await chrome.tabs.sendMessage(tab.id, {
                     type: 'START_RECORDING',
-                    pageName,
+                    pageName, // Sent as inferred or null
                     testName,
                     testCaseName
                 });
@@ -1232,6 +1254,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     }
 
     function stopRecording() {
+        console.log('🛑 Stopping recording. Steps recorded:', recordedSteps.length);
         setRecordingUI(false);
 
         // Send message to content script to stop recording
@@ -1245,8 +1268,13 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         if (recordedSteps.length > 0) {
             const generateBtn = document.getElementById('generateCodeBtn');
             if (generateBtn) {
+                console.log('✅ Showing generate button');
                 generateBtn.style.display = 'inline-flex';
+            } else {
+                console.error('❌ Generate button not found in DOM');
             }
+        } else {
+            console.warn('⚠️ No steps recorded, not showing generate button');
         }
     }
 
@@ -1262,7 +1290,7 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 return;
             }
 
-            const pageName = document.getElementById('recorderPageSelect').value;
+            // pageName is no longer manually selected
             const testName = document.getElementById('recorderTestSelect').value;
             const testCaseSelect = document.getElementById('recorderTestCase');
             const testCaseValue = testCaseSelect.value;
@@ -1330,24 +1358,31 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 );
 
                 if (userChoice) {
-                    // Append new steps
-                    existingCase.steps = [...(existingCase.steps || []), ...recordedSteps];
-                    console.log(`✅ Appended ${recordedSteps.length} steps to existing test case "${testCaseName}"`);
+                    // Append new steps with deduplication
+                    const combinedSteps = [...(existingCase.steps || []), ...recordedSteps];
+                    const deduplicatedSteps = deduplicateSteps(combinedSteps);
+                    const duplicatesRemoved = combinedSteps.length - deduplicatedSteps.length;
+
+                    existingCase.steps = deduplicatedSteps;
+                    console.log(`✅ Appended ${recordedSteps.length} steps (${duplicatesRemoved} duplicates removed) to test case "${testCaseName}"`);
                 } else {
-                    // Replace all steps
-                    existingCase.steps = recordedSteps;
+                    // Replace all steps (also deduplicate in case recordedSteps has duplicates)
+                    existingCase.steps = deduplicateSteps(recordedSteps);
                     console.log(`✅ Replaced steps in test case "${testCaseName}"`);
                 }
 
                 existingCase.updatedAt = Date.now();
             } else {
-                // Create new test case
+                // Create new test case (deduplicate steps)
+                const deduplicatedSteps = deduplicateSteps(recordedSteps);
+                const duplicatesRemoved = recordedSteps.length - deduplicatedSteps.length;
+
                 testSpec.testCases.push({
                     name: testCaseName,
-                    steps: recordedSteps,
+                    steps: deduplicatedSteps,
                     createdAt: Date.now()
                 });
-                console.log(`✅ Created new test case "${testCaseName}" with ${recordedSteps.length} steps`);
+                console.log(`✅ Created new test case "${testCaseName}" with ${deduplicatedSteps.length} steps${duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicates removed)` : ''}`);
             }
 
             // Ensure pageNames is set (for multiple page object support)
@@ -1386,22 +1421,27 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     }
 
     function generateCode() {
+        console.log('🔧 generateCode called. Steps:', recordedSteps.length);
         const codeDisplay = document.getElementById('generatedCode');
 
         if (!currentProject) {
+            console.warn('⚠️ No project selected');
             codeDisplay.textContent = '// Please create or select a project first';
             return;
         }
 
         if (recordedSteps.length === 0) {
+            console.warn('⚠️ No steps to generate code from');
             codeDisplay.textContent = '// Start recording to see generated code...';
             return;
         }
 
         const testName = document.getElementById('recorderTestSelect').value;
+        console.log('🎯 Test selected:', testName);
 
         // If test not selected, show generic step code
         if (!testName) {
+            console.warn('⚠️ No test selected, showing generic code');
             let code = `// ${recordedSteps.length} steps recorded\n`;
             code += `// Please select a Test Spec to see full test code\n\n`;
             code += `// Recorded steps:\n`;
@@ -1415,17 +1455,20 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
             return;
         }
 
-        const pageObject = currentProject.pages[pageName];
         const testSpec = currentProject.tests[testName];
 
-        if (!pageObject) {
-            codeDisplay.textContent = `// Error: Page object "${pageName}" not found`;
+        if (!testSpec) {
+            console.error('❌ Test spec not found:', testName);
+            codeDisplay.textContent = `// Error: Test spec "${testName}" not found`;
             return;
         }
 
-        if (!testSpec) {
-            codeDisplay.textContent = `// Error: Test spec "${testName}" not found`;
-            return;
+        // Infer pageName from test spec
+        let pageName = null;
+        if (testSpec.pageNames && testSpec.pageNames.length > 0) {
+            pageName = testSpec.pageNames[0];
+        } else if (testSpec.pageName) {
+            pageName = testSpec.pageName;
         }
 
         // Generate full test code
@@ -1503,26 +1546,61 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
     // Listen for recorded steps from content script
     chrome.runtime.onMessage.addListener((message) => {
         if (message.type === 'RECORDED_STEP') {
+            console.log('📝 RECORDED_STEP received:', message.step);
             const step = message.step;
 
             // Try to match step with existing Page Object elements
             if (currentProject) {
                 const testName = document.getElementById('recorderTestSelect').value;
+                console.log('🎯 Current test:', testName);
                 const testSpec = currentProject.tests[testName];
                 let matched = false;
 
+                // Helper function to check if two selectors might match the same element
+                const selectorsMatch = (selector1, selector2) => {
+                    // Ensure both selectors are strings
+                    if (typeof selector1 !== 'string' || typeof selector2 !== 'string') {
+                        return false;
+                    }
+
+                    // Exact match
+                    if (selector1 === selector2) return true;
+
+                    // Check if one selector contains the other (for complex vs simple selectors)
+                    // e.g., "p-password#password > div > input" contains "#password"
+                    if (selector1.includes(selector2) || selector2.includes(selector1)) {
+                        return true;
+                    }
+
+                    // Extract IDs and check if they match
+                    const id1Match = selector1.match(/#([a-zA-Z0-9_-]+)/);
+                    const id2Match = selector2.match(/#([a-zA-Z0-9_-]+)/);
+                    if (id1Match && id2Match && id1Match[1] === id2Match[1]) {
+                        return true;
+                    }
+
+                    return false;
+                };
+
                 // 1. Check associated pages first (if any)
                 if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                    console.log('🔍 Checking associated pages:', testSpec.pageNames);
                     for (const pageName of testSpec.pageNames) {
                         const page = currentProject.pages[pageName];
-                        if (!page) continue;
+                        if (!page) {
+                            console.warn(`⚠️ Page "${pageName}" not found`);
+                            continue;
+                        }
 
+                        console.log(`🔍 Checking page "${pageName}" with ${Object.keys(page.elements).length} elements`);
                         for (const [elName, elData] of Object.entries(page.elements)) {
-                            if (elData.selector === step.selector) {
+                            console.log(`  Comparing: PO="${elData.selector}" vs Step="${step.selector}"`);
+                            if (selectorsMatch(elData.selector, step.selector)) {
                                 step.pageName = pageName;
                                 step.elementName = elName; // Use the PO's element name
+                                step.selector = elData.selector; // Use the PO's selector for consistency
                                 matched = true;
-                                console.log(`Matched step to ${pageName}.${elName}`);
+                                console.log(`✅ MATCHED! ${pageName}.${elName}`);
                                 break;
                             }
                         }
@@ -1532,18 +1610,50 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
 
                 // 2. If not matched, check the currently selected page (if different)
                 if (!matched) {
-                    const currentPageName = document.getElementById('recorderPageSelect').value;
-                    const page = currentProject.pages[currentPageName];
-                    if (page) {
-                        for (const [elName, elData] of Object.entries(page.elements)) {
-                            if (elData.selector === step.selector) {
-                                step.pageName = currentPageName;
-                                step.elementName = elName;
-                                matched = true;
-                                console.log(`Matched step to ${currentPageName}.${elName}`);
-                                break;
+                    console.log('⚠️ No match in associated pages, checking fallback');
+                    // Try to infer page name from test spec
+                    let currentPageName = null;
+                    if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                        currentPageName = testSpec.pageNames[0];
+                    } else if (testSpec && testSpec.pageName) {
+                        currentPageName = testSpec.pageName;
+                    }
+
+                    if (currentPageName) {
+                        const page = currentProject.pages[currentPageName];
+                        if (page) {
+                            for (const [elName, elData] of Object.entries(page.elements)) {
+                                if (selectorsMatch(elData.selector, step.selector)) {
+                                    step.pageName = currentPageName;
+                                    step.elementName = elName;
+                                    step.selector = elData.selector; // Use the PO's selector
+                                    matched = true;
+                                    console.log(`✅ MATCHED (fallback)! ${currentPageName}.${elName}`);
+                                    break;
+                                }
                             }
                         }
+                    }
+                }
+
+                if (!matched) {
+                    console.warn(`❌ No Page Object match found for selector: "${step.selector}"`);
+
+                    // CRITICAL: Set pageName and elementName so auto-populate can add this element
+                    // Try to infer page name from test spec
+                    if (testSpec && testSpec.pageNames && testSpec.pageNames.length > 0) {
+                        step.pageName = testSpec.pageNames[0]; // Use first associated page
+
+                        // Generate element name from selector or element type
+                        if (!step.elementName) {
+                            // Try to generate a meaningful name
+                            const selectorParts = step.selector.split(/[>#\s.]+/).filter(p => p);
+                            const lastPart = selectorParts[selectorParts.length - 1] || 'element';
+                            const actionPrefix = step.action === 'fill' ? 'input' : step.action === 'click' ? 'button' : 'element';
+                            step.elementName = `${lastPart}${actionPrefix.charAt(0).toUpperCase() + actionPrefix.slice(1)}`;
+                        }
+
+                        console.log(`🔧 Auto-assigning to page: ${step.pageName}, element: ${step.elementName}`);
                     }
                 }
             }
@@ -1598,13 +1708,44 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
                 step.assertions = [{ type: assertionType }];
             }
 
+            // Improved deduplication: check last 3 steps for exact duplicates
+            const lastSteps = recordedSteps.slice(-3); // Only check last 3 steps for performance
+            const isDuplicate = lastSteps.some(existingStep => {
+                // For regular steps, check if same action + selector
+                if (step.action !== 'assertion' && existingStep.action !== 'assertion') {
+                    return (
+                        existingStep.action === step.action &&
+                        existingStep.selector === step.selector &&
+                        existingStep.value === step.value
+                    );
+                }
+                // For assertion steps, check if same type + selector
+                if (step.action === 'assertion' && existingStep.action === 'assertion') {
+                    return (
+                        existingStep.type === step.type &&
+                        existingStep.selector === step.selector
+                    );
+                }
+                return false;
+            });
+
+            if (isDuplicate) {
+                console.log('⚠️ Duplicate step detected, skipping:', step);
+                return; // Skip this duplicate step
+            }
+
+            console.log('✅ Adding step to recordedSteps. Current count:', recordedSteps.length);
             recordedSteps.push(step);
+            console.log('✅ Step added. New count:', recordedSteps.length);
             addStepToList(step);
 
             // Auto-populate Page Object with elements from recorded steps
-            autoPopulatePageObject(step);
-
-            generateCode();
+            // Use async IIFE to wait for completion before generating code
+            (async () => {
+                await autoPopulatePageObject(step);
+                // Generate code after Page Object is updated
+                generateCode();
+            })();
         }
     });
 
@@ -1699,95 +1840,29 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         }
     }
 
-    // Listen for replay progress
-    chrome.runtime.onMessage.addListener((message) => {
-        if (message.type === 'REPLAY_PROGRESS') {
-            const { stepIndex, status, error } = message;
-            const stepsList = document.getElementById('stepsList');
-            const stepItems = stepsList.querySelectorAll('.step-item');
+    // Helper to update replay status
+    function updateReplayStatus(stepIndex, status, error) {
+        const stepsList = document.getElementById('stepsList');
+        if (!stepsList) return;
 
-            if (stepItems[stepIndex]) {
-                const item = stepItems[stepIndex];
-                item.classList.remove('step-running', 'step-success', 'step-failed');
+        const stepItems = stepsList.querySelectorAll('.step-item');
 
-                if (status === 'running') {
-                    item.classList.add('step-running');
-                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                } else if (status === 'success') {
-                    item.classList.add('step-success');
-                } else if (status === 'failed') {
-                    item.classList.add('step-failed');
-                    item.title = error || 'Step failed';
-                }
+        if (stepItems[stepIndex]) {
+            const item = stepItems[stepIndex];
+            item.classList.remove('step-running', 'step-success', 'step-failed');
+
+            if (status === 'running') {
+                item.classList.add('step-running');
+                item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (status === 'success') {
+                item.classList.add('step-success');
+            } else if (status === 'failed') {
+                item.classList.add('step-failed');
+                item.title = error || 'Step failed';
             }
-        } else if (message.type === 'REPLAY_COMPLETE') {
-            resetReplayButtons();
         }
-    });
-
-    function addStepToList(step, index) {
-        const stepsList = document.getElementById('stepsList');
-        const li = document.createElement('li');
-        li.className = 'step-item';
-        li.dataset.index = index !== undefined ? index : recordedSteps.length - 1;
-
-        // Add icon based on action
-        const icon = step.action === 'click' ? '🖱️' :
-            step.action === 'fill' ? '⌨️' :
-                step.action === 'select' ? '📋' :
-                    step.action === 'screenshot' ? '📷' : '▶️';
-
-        // Format step text
-        let stepText = `${icon} ${step.action.toUpperCase()}`;
-        if (step.elementName) {
-            stepText += ` → ${step.elementName}`;
-        }
-        if (step.value) {
-            stepText += ` = "${step.value}"`;
-        }
-
-        li.innerHTML = `
-            <div class="step-content">
-                <span class="step-text">${stepText}</span>
-                <span class="step-selector">${step.selector}</span>
-            </div>
-            <button class="step-delete-btn" title="Delete Step">×</button>
-        `;
-
-        // Add delete handler
-        li.querySelector('.step-delete-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteStep(parseInt(li.dataset.index));
-        });
-
-        stepsList.appendChild(li);
-
-        // Auto-scroll to bottom
-        stepsList.scrollTop = stepsList.scrollHeight;
-
-        // Generate code preview
-        generateCode();
     }
 
-    function deleteStep(index) {
-        recordedSteps.splice(index, 1);
-        // Re-render list
-        const stepsList = document.getElementById('stepsList');
-        stepsList.innerHTML = '';
-        recordedSteps.forEach((step, i) => addStepToList(step, i));
-        generateCode();
-    }
-
-    // Modal helpers - make globally accessible
-    window.openModal = function (modal) {
-        if (modal) modal.classList.add('active');
-    };
-
-    window.closeModal = function (modal) {
-        if (modal) modal.classList.remove('active');
-    };
-
-    // Global functions for list item actions
     window.viewPageObject = async (name) => {
         console.log('viewPageObject called with:', name);
 
@@ -2090,6 +2165,168 @@ ${Object.keys(currentProject.pages).map(p => `│   ├── ${p}.${getFileExt(
         });
     }
 
+
+    // Generate assertion suggestions
+    function generateAssertions(step) {
+        const suggestions = [];
+        if (step.action === 'click') {
+            suggestions.push({ type: 'toBeVisible', label: 'Check Visibility' });
+        } else if (step.action === 'fill' || step.action === 'select') {
+            suggestions.push({ type: 'toHaveValue', value: step.value, label: `Check Value: ${step.value}` });
+        }
+        return suggestions;
+    }
+
+    // Add step to UI list
+    function addStepToList(step) {
+        console.log('🎨 addStepToList called for:', step.action, step.selector);
+
+        // NOTE: Do NOT push to recordedSteps here!
+        // The RECORDED_STEP handler already pushes to recordedSteps before calling this function.
+        // This function is ONLY for rendering the UI.
+
+        const list = document.getElementById('stepsList');
+        if (!list) {
+            console.error('❌ stepsList element not found');
+            return;
+        }
+
+        // Remove empty state if present
+        const emptyState = list.querySelector('.empty-state');
+        if (emptyState) emptyState.remove();
+
+        const item = document.createElement('div');
+        item.className = 'step-item';
+        item.dataset.index = recordedSteps.length - 1;
+
+        // Generate assertions
+        const suggestions = generateAssertions(step);
+        let suggestionsHtml = '';
+        if (suggestions.length > 0) {
+            suggestionsHtml = `
+                <div class="step-suggestions">
+                    <div class="suggestions-title">Suggested Assertions:</div>
+                    ${suggestions.map((s, i) => `
+                        <div class="suggestion-item">
+                            <span>${s.label}</span>
+                            <button class="add-assertion-btn" data-type="${s.type}" data-value="${s.value || ''}">Add</button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Use displaySelector if available, otherwise fallback to selector (which might be object or string)
+        let selectorStr = step.displaySelector || step.selector;
+        if (typeof selectorStr === 'object') {
+            selectorStr = selectorStr.value || JSON.stringify(selectorStr);
+        }
+
+        item.innerHTML = `
+            <div class="step-header">
+                <span class="step-action">${step.action.toUpperCase()}</span>
+                <span class="step-element">${step.elementName || 'Unknown Element'}</span>
+            </div>
+            <div class="step-details">
+                <div class="step-selector" title="${selectorStr}">${selectorStr}</div>
+                ${step.value ? `<div class="step-value">Value: ${step.value}</div>` : ''}
+                ${step.screenshot ? `<div class="step-screenshot"><img src="${step.screenshot}" alt="Screenshot" title="Click to view full size" onclick="window.open('${step.screenshot}', '_blank')"></div>` : ''}
+                ${suggestionsHtml}
+            </div>
+            <button class="delete-step-btn" title="Remove step">×</button>
+        `;
+
+        // Add assertion handler
+        item.querySelectorAll('.add-assertion-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const type = btn.dataset.type;
+                const value = btn.dataset.value;
+
+                const assertionStep = {
+                    action: 'assertion',
+                    type: type,
+                    selector: step.selector,
+                    elementName: step.elementName,
+                    value: value,
+                    timestamp: Date.now()
+                };
+
+                // Add after current step
+                const index = parseInt(item.dataset.index);
+                recordedSteps.splice(index + 1, 0, assertionStep);
+
+                renderStepsList();
+                saveSession();
+            });
+        });
+
+        // Delete button handler
+        item.querySelector('.delete-step-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(item.dataset.index);
+            recordedSteps.splice(index, 1);
+            // Re-render list to update indices
+            renderStepsList();
+            saveSession();
+        });
+
+        list.appendChild(item);
+    }
+
+    function renderStepsList() {
+        const list = document.getElementById('stepsList');
+        if (!list) return;
+        list.innerHTML = '';
+
+        if (recordedSteps.length === 0) {
+            list.innerHTML = '<div class="empty-state">No steps recorded yet. Click "Start Recording" to begin.</div>';
+            return;
+        }
+
+        recordedSteps.forEach((step, index) => {
+            const item = document.createElement('div');
+            item.className = 'step-item';
+            item.dataset.index = index;
+
+            let selectorStr = step.displaySelector || step.selector;
+            if (typeof selectorStr === 'object') {
+                selectorStr = selectorStr.value || JSON.stringify(selectorStr);
+            }
+
+            item.innerHTML = `
+                <div class="step-header">
+                    <span class="step-action">${step.action.toUpperCase()}</span>
+                    <span class="step-element">${step.elementName || 'Unknown Element'}</span>
+                </div>
+                <div class="step-details">
+                    <div class="step-selector" title="${selectorStr}">${selectorStr}</div>
+                    ${step.value ? `<div class="step-value">Value: ${step.value}</div>` : ''}
+                    ${step.screenshot ? `<div class="step-screenshot"><img src="${step.screenshot}" alt="Screenshot" title="Click to view full size" onclick="window.open('${step.screenshot}', '_blank')"></div>` : ''}
+                </div>
+                <button class="delete-step-btn" title="Remove step">×</button>
+            `;
+
+            item.querySelector('.delete-step-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                recordedSteps.splice(index, 1);
+                renderStepsList();
+                saveSession();
+            });
+
+            list.appendChild(item);
+        });
+    }
+
+
+    function saveSession() {
+        const session = {
+            steps: recordedSteps,
+            testName: document.getElementById('recorderTestSelect')?.value || '',
+            testCase: document.getElementById('recorderTestCase')?.value || ''
+        };
+        chrome.runtime.sendMessage({ type: 'SAVE_SESSION', session });
+    }
 
     // Initialize
     loadProjects();

@@ -264,8 +264,19 @@ if (window.hasRun) {
         return detector.detectElements();
     }
 
+    // Helper to capture screenshot
+    async function captureScreenshot() {
+        try {
+            const response = await chrome.runtime.sendMessage({ type: 'CAPTURE_VISIBLE_TAB' });
+            return response && response.dataUrl ? response.dataUrl : null;
+        } catch (err) {
+            console.error('Failed to capture screenshot:', err);
+            return null;
+        }
+    }
+
     // Record click events
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', async (e) => {
         if (!isRecording) return;
 
         const element = e.target;
@@ -278,15 +289,17 @@ if (window.hasRun) {
         const elementType = getElementType(element);
         const elementName = generateElementName(element, elementType);
 
+        // Capture screenshot
+        const screenshot = await captureScreenshot();
+
         const step = {
             action: 'click',
             selector: selector,
             elementName: elementName,
             elementType: elementType,
-            elementName: elementName,
-            elementType: elementType,
             url: window.location.href,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            screenshot: screenshot // Add screenshot
         };
 
         updateOverlay(`Clicked: ${elementName}`);
@@ -302,17 +315,57 @@ if (window.hasRun) {
 
     }, true);
 
-    // Record input events
-    document.addEventListener('input', (e) => {
+    // Debounce timers for input fields (to avoid recording every keystroke)
+    const inputDebounceTimers = new Map();
+    const INPUT_DEBOUNCE_DELAY = 500; // Wait 500ms after last keystroke
+
+    // Record input events (debounced to capture final value only)
+    document.addEventListener('input', async (e) => {
         if (!isRecording) return;
 
         const element = e.target;
 
+        // Only debounce for text inputs, not for other input types
+        const inputType = element.type?.toLowerCase();
+        const shouldDebounce = ['text', 'password', 'email', 'search', 'tel', 'url', 'number'].includes(inputType) ||
+            element.tagName.toLowerCase() === 'textarea';
+
+        if (!shouldDebounce) {
+            // For checkboxes, radio buttons, etc., record immediately
+            recordInputStep(element);
+            return;
+        }
+
+        // Clear existing timer for this element
+        const elementKey = generateSelector(element);
+        if (inputDebounceTimers.has(elementKey)) {
+            clearTimeout(inputDebounceTimers.get(elementKey));
+        }
+
+        // Highlight element while typing
+        highlightElement(element);
+        updateOverlay(`Typing in: ${generateElementName(element, getElementType(element))}`);
+
+        // Set new timer - only record after user stops typing
+        const timer = setTimeout(async () => {
+            await recordInputStep(element);
+            inputDebounceTimers.delete(elementKey);
+        }, INPUT_DEBOUNCE_DELAY);
+
+        inputDebounceTimers.set(elementKey, timer);
+
+    }, true);
+
+    // Helper function to record input step
+    async function recordInputStep(element) {
         highlightElement(element);
 
         const selector = generateSelector(element);
         const elementType = getElementType(element);
         const elementName = generateElementName(element, elementType);
+
+        // Skip screenshot for input to keep it responsive
+        const screenshot = null;
 
         const step = {
             action: 'fill',
@@ -320,13 +373,12 @@ if (window.hasRun) {
             value: element.value,
             elementName: elementName,
             elementType: elementType,
-            elementName: elementName,
-            elementType: elementType,
             url: window.location.href,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            screenshot: screenshot
         };
 
-        updateOverlay(`Filled: ${elementName}`);
+        updateOverlay(`Filled: ${elementName} = "${element.value}"`);
 
         // Send to background/popup
         chrome.runtime.sendMessage({
@@ -336,11 +388,10 @@ if (window.hasRun) {
             testName: currentTestName,
             testCase: currentTestCase
         });
-
-    }, true);
+    }
 
     // Record select changes
-    document.addEventListener('change', (e) => {
+    document.addEventListener('change', async (e) => {
         if (!isRecording) return;
 
         const element = e.target;
@@ -352,16 +403,17 @@ if (window.hasRun) {
         const elementType = 'select';
         const elementName = generateElementName(element, elementType);
 
+        const screenshot = await captureScreenshot();
+
         const step = {
             action: 'select',
             selector: selector,
             value: element.value,
             elementName: elementName,
             elementType: elementType,
-            elementName: elementName,
-            elementType: elementType,
             url: window.location.href,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            screenshot: screenshot
         };
 
         updateOverlay(`Selected: ${elementName}`);
@@ -379,25 +431,50 @@ if (window.hasRun) {
 
     // Generate robust selector
     function generateSelector(element) {
-        // Priority 1: ID
+        // Match SelectorEngine priority order for consistency
+
+        // Priority 1: data-testid or similar test attributes (Highest Priority)
+        const testAttributes = ['data-testid', 'data-test', 'data-cy', 'data-qa', 'data-automation-id'];
+        for (const attr of testAttributes) {
+            const value = element.getAttribute(attr);
+            if (value) {
+                return `[${attr}="${value}"]`;
+            }
+        }
+
+        // Priority 2: ARIA Role + Name (for better semantic selectors)
+        const role = element.getAttribute('role');
+        const ariaLabel = element.getAttribute('aria-label');
+        const textContent = element.textContent?.trim();
+
+        // For buttons, use role-based selector if available
+        if (role && ['button', 'link', 'textbox', 'checkbox', 'radio', 'combobox'].includes(role)) {
+            const name = ariaLabel || textContent;
+            if (name && name.length < 50) { // Avoid very long text
+                return `role=${role}[name="${name}"]`;
+            }
+        } else if (element.tagName === 'BUTTON' || (element.tagName === 'INPUT' && element.type === 'submit')) {
+            // Implicit button role
+            const btnName = element.innerText || element.value || ariaLabel;
+            if (btnName && btnName.length < 50) {
+                return `role=button[name="${btnName}"]`;
+            }
+        }
+
+        // Priority 3: ID (but avoid dynamic IDs)
         if (element.id) {
-            return `#${element.id}`;
+            // Skip IDs that look dynamic (contain long numbers or hashes)
+            if (!/\d{3,}$/.test(element.id) && !/^[a-f0-9]{10,}$/i.test(element.id)) {
+                return `#${element.id}`;
+            }
         }
 
-        // Priority 2: data-testid or similar
-        const testId = element.getAttribute('data-testid') ||
-            element.getAttribute('data-test') ||
-            element.getAttribute('data-cy');
-        if (testId) {
-            return `[data-testid="${testId}"]`;
-        }
-
-        // Priority 3: name attribute
+        // Priority 4: name attribute
         if (element.name) {
             return `[name="${element.name}"]`;
         }
 
-        // Priority 4: Generate path-based selector
+        // Priority 5: Generate path-based selector (fallback)
         return generatePathSelector(element);
     }
 
@@ -620,9 +697,226 @@ if (window.hasRun) {
         }, 4000);
     }
 
+    // SelectorEngine class (inline for content script)
+    class SelectorEngine {
+        constructor() {
+            this.priorityList = [
+                { type: 'data-testid', score: 100 },
+                { type: 'role', score: 80 },
+                { type: 'id', score: 60 },
+                { type: 'name', score: 50 },
+                { type: 'text', score: 40 },
+                { type: 'class', score: 20 },
+                { type: 'css', score: 10 },
+                { type: 'xpath', score: 5 }
+            ];
+        }
+
+        calculateScore(type) {
+            const priority = this.priorityList.find(p => p.type === type);
+            return priority ? priority.score : 0;
+        }
+
+        getPossibleSelectors(element) {
+            const selectors = [];
+
+            // 1. Data Test ID
+            const testAttributes = [
+                'data-testid', 'data-test', 'data-cy', 'data-qa', 'data-automation-id',
+                'data-component', 'data-widget'
+            ];
+            for (const attr of testAttributes) {
+                if (element.hasAttribute(attr)) {
+                    const value = element.getAttribute(attr);
+                    const selector = `[${attr}="${CSS.escape(value)}"]`;
+                    if (this.isUnique(selector)) {
+                        selectors.push({
+                            type: 'data-testid',
+                            value: selector,
+                            score: this.calculateScore('data-testid'),
+                            originalAttribute: attr
+                        });
+                    }
+                }
+            }
+
+            // 2. ARIA Role + Name
+            const role = element.getAttribute('role');
+            const ariaLabel = element.getAttribute('aria-label');
+            const textContent = element.textContent?.trim();
+            const name = ariaLabel || textContent;
+
+            if (role && ['button', 'link', 'textbox', 'checkbox', 'radio', 'combobox'].includes(role)) {
+                selectors.push({
+                    type: 'role',
+                    value: `role=${role}[name="${name}"]`,
+                    score: this.calculateScore('role'),
+                    details: { role, name }
+                });
+            } else if (element.tagName === 'BUTTON' || (element.tagName === 'INPUT' && element.type === 'submit')) {
+                const btnName = element.innerText || element.value || element.getAttribute('aria-label');
+                if (btnName) {
+                    selectors.push({
+                        type: 'role',
+                        value: `role=button[name="${btnName}"]`,
+                        score: this.calculateScore('role'),
+                        details: { role: 'button', name: btnName }
+                    });
+                }
+            }
+
+            // 3. Unique ID
+            if (element.id) {
+                const selector = `#${CSS.escape(element.id)}`;
+                if (this.isUnique(selector)) {
+                    if (!/\d{3,}$/.test(element.id) && !/^[a-f0-9]{10,}$/i.test(element.id)) {
+                        selectors.push({
+                            type: 'id',
+                            value: selector,
+                            score: this.calculateScore('id')
+                        });
+                    }
+                }
+            }
+
+            // 4. Name Attribute
+            if (element.name) {
+                const selector = `[name="${CSS.escape(element.name)}"]`;
+                if (this.isUnique(selector)) {
+                    selectors.push({
+                        type: 'name',
+                        value: selector,
+                        score: this.calculateScore('name')
+                    });
+                }
+            }
+
+            // 5. Unique Text
+            if (['BUTTON', 'A', 'LABEL', 'SPAN', 'DIV'].includes(element.tagName)) {
+                const text = element.textContent?.trim();
+                if (text && text.length > 0 && text.length < 50) {
+                    selectors.push({
+                        type: 'text',
+                        value: `text=${text}`,
+                        score: this.calculateScore('text'),
+                        details: { text }
+                    });
+                }
+            }
+
+            // 6. Class Combinations
+            if (element.className && typeof element.className === 'string') {
+                const classes = element.className.split(/\s+/).filter(c => c.trim().length > 0);
+                const validClasses = classes.filter(c => !['active', 'focus', 'hover', 'selected', 'disabled', 'ng-touched', 'ng-dirty', 'ng-valid', 'ng-invalid'].includes(c));
+
+                if (validClasses.length > 0) {
+                    for (const cls of validClasses) {
+                        const selector = `.${CSS.escape(cls)}`;
+                        if (this.isUnique(selector)) {
+                            selectors.push({
+                                type: 'class',
+                                value: selector,
+                                score: this.calculateScore('class')
+                            });
+                        }
+                    }
+                    if (validClasses.length > 1) {
+                        const selector = '.' + validClasses.map(c => CSS.escape(c)).join('.');
+                        if (this.isUnique(selector)) {
+                            selectors.push({
+                                type: 'class',
+                                value: selector,
+                                score: this.calculateScore('class')
+                            });
+                        }
+                    }
+                }
+            }
+
+            // 7. Structural CSS (Fallback)
+            const cssPath = this.generatePathSelector(element);
+            selectors.push({
+                type: 'css',
+                value: cssPath,
+                score: this.calculateScore('css')
+            });
+
+            return selectors;
+        }
+
+        getBestSelector(element) {
+            const candidates = this.getPossibleSelectors(element);
+            candidates.sort((a, b) => b.score - a.score);
+            return candidates[0];
+        }
+
+        isUnique(selector) {
+            try {
+                return document.querySelectorAll(selector).length === 1;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        generatePathSelector(element) {
+            const path = [];
+            let current = element;
+
+            while (current && current.nodeType === Node.ELEMENT_NODE) {
+                let selector = current.tagName.toLowerCase();
+
+                if (current.id) {
+                    selector += `#${CSS.escape(current.id)}`;
+                    path.unshift(selector);
+                    break;
+                }
+
+                let classSelector = '';
+                if (current.className && typeof current.className === 'string') {
+                    const classes = current.className.split(/\s+/).filter(c => c.trim().length > 0);
+                    const validClasses = classes.filter(c => !['active', 'focus', 'hover', 'selected', 'disabled', 'ng-touched', 'ng-dirty', 'ng-valid', 'ng-invalid'].includes(c));
+                    if (validClasses.length > 0) {
+                        classSelector = '.' + validClasses.map(c => CSS.escape(c)).join('.');
+                    }
+                }
+
+                const siblings = Array.from(current.parentNode?.children || []);
+                const sameTagSiblings = siblings.filter(el => el.tagName === current.tagName);
+
+                if (sameTagSiblings.length > 1) {
+                    if (classSelector) {
+                        const sameTagAndClassSiblings = sameTagSiblings.filter(el => {
+                            return el.matches(current.tagName.toLowerCase() + classSelector);
+                        });
+
+                        if (sameTagAndClassSiblings.length === 1) {
+                            selector += classSelector;
+                        } else {
+                            const index = sameTagSiblings.indexOf(current) + 1;
+                            selector += `:nth-of-type(${index})`;
+                        }
+                    } else {
+                        const index = sameTagSiblings.indexOf(current) + 1;
+                        selector += `:nth-of-type(${index})`;
+                    }
+                } else if (classSelector) {
+                    if (['div', 'span'].includes(current.tagName.toLowerCase())) {
+                        selector += classSelector;
+                    }
+                }
+
+                path.unshift(selector);
+                current = current.parentNode;
+                if (path.length >= 5) break;
+            }
+            return path.join(' > ');
+        }
+    }
+
     // ElementDetector class (inline for content script)
     class ElementDetector {
         constructor() {
+            this.selectorEngine = new SelectorEngine();
             this.elementTypes = {
                 button: ['button', '[type="button"]', '[type="submit"]', '[role="button"]'],
                 input: [
@@ -692,7 +986,10 @@ if (window.hasRun) {
 
                     const type = getElementType(el);
                     let name = generateElementName(el, type);
-                    const sel = generateSelector(el);
+
+                    // Use SelectorEngine
+                    const bestSelectorObj = this.selectorEngine.getBestSelector(el);
+                    const sel = bestSelectorObj.value;
 
                     // Ensure unique names
                     if (nameCounter[name]) {
@@ -706,6 +1003,7 @@ if (window.hasRun) {
                         name,
                         type,
                         selector: sel,
+                        selectorObject: bestSelectorObj, // Store full object
                         text: el.textContent?.trim().substring(0, 50) || '',
                         placeholder: el.placeholder || ''
                     });

@@ -49,6 +49,35 @@ class CodeGenerator {
         }
     }
 
+    // Get folder structure based on tool
+    getFolderStructure() {
+        const structures = {
+            playwright: {
+                pages: 'pages',
+                tests: 'tests',
+                utils: 'utils',
+                config: 'config',
+                fixtures: 'fixtures'
+            },
+            selenium: {
+                pages: 'pages',
+                tests: 'tests',
+                utils: 'utils',
+                config: 'config',
+                fixtures: 'fixtures'
+            },
+            webdriverio: {
+                pages: 'test/pageobjects',
+                tests: 'test/specs',
+                utils: 'test/helpers',
+                config: '.', // Root
+                fixtures: 'test/fixtures'
+            }
+        };
+
+        return structures[this.tool] || structures.playwright;
+    }
+
     // Generate Test Spec code
     generateTestSpec(testSpec, pageObjects) {
         const generators = {
@@ -94,13 +123,16 @@ class CodeGenerator {
 
     // Playwright TypeScript Page Object
     generatePlaywrightTS(pageObject) {
-        let code = `import { Page } from '@playwright/test';\n\n`;
+        let code = `import { Page, Locator } from '@playwright/test';\n\n`;
         code += `export class ${this.toPascalCase(pageObject.name)} {\n`;
         code += `  constructor(private page: Page) {}\n\n`;
 
         // Elements
         Object.entries(pageObject.elements).forEach(([name, data]) => {
-            code += `  private ${this.toCamelCase(name)} = '${data.selector}';\n`;
+            const selectorCode = this.getPlaywrightSelector(data.selector);
+            code += `  private get ${this.toCamelCase(name)}(): Locator {\n`;
+            code += `    return ${selectorCode};\n`;
+            code += `  }\n`;
         });
         code += `\n`;
 
@@ -120,28 +152,30 @@ class CodeGenerator {
             // Auto-generate methods from elements if no custom methods exist
             Object.entries(pageObject.elements).forEach(([name, data]) => {
                 const pascalName = this.toPascalCase(name);
+                const camelName = this.toCamelCase(name);
+
                 if (data.type === 'button' || data.type === 'link') {
                     code += `  async click${pascalName}() {\n`;
-                    code += `    await this.page.click(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.click();\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'input' || data.type === 'textarea') {
                     code += `  async fill${pascalName}(value: string) {\n`;
-                    code += `    await this.page.fill(this.${this.toCamelCase(name)}, value);\n`;
+                    code += `    await this.${camelName}.fill(value);\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'select') {
                     code += `  async select${pascalName}(value: string) {\n`;
-                    code += `    await this.page.selectOption(this.${this.toCamelCase(name)}, value);\n`;
+                    code += `    await this.${camelName}.selectOption(value);\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'checkbox') {
                     code += `  async check${pascalName}() {\n`;
-                    code += `    await this.page.check(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.check();\n`;
                     code += `  }\n\n`;
                     code += `  async uncheck${pascalName}() {\n`;
-                    code += `    await this.page.uncheck(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.uncheck();\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'radio') {
                     code += `  async select${pascalName}() {\n`;
-                    code += `    await this.page.check(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.check();\n`;
                     code += `  }\n\n`;
                 }
             });
@@ -156,11 +190,16 @@ class CodeGenerator {
         let code = `class ${this.toPascalCase(pageObject.name)} {\n`;
         code += `  constructor(page) {\n`;
         code += `    this.page = page;\n`;
-
-        Object.entries(pageObject.elements).forEach(([name, data]) => {
-            code += `    this.${this.toCamelCase(name)} = '${data.selector}';\n`;
-        });
         code += `  }\n\n`;
+
+        // Getters for elements
+        Object.entries(pageObject.elements).forEach(([name, data]) => {
+            const selectorCode = this.getPlaywrightSelector(data.selector);
+            code += `  get ${this.toCamelCase(name)}() {\n`;
+            code += `    return ${selectorCode};\n`;
+            code += `  }\n`;
+        });
+        code += `\n`;
 
         // Methods
         if (pageObject.methods && pageObject.methods.length > 0) {
@@ -178,28 +217,30 @@ class CodeGenerator {
             // Auto-generate methods from elements
             Object.entries(pageObject.elements).forEach(([name, data]) => {
                 const pascalName = this.toPascalCase(name);
+                const camelName = this.toCamelCase(name);
+
                 if (data.type === 'button' || data.type === 'link') {
                     code += `  async click${pascalName}() {\n`;
-                    code += `    await this.page.click(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.click();\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'input' || data.type === 'textarea') {
                     code += `  async fill${pascalName}(value) {\n`;
-                    code += `    await this.page.fill(this.${this.toCamelCase(name)}, value);\n`;
+                    code += `    await this.${camelName}.fill(value);\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'select') {
                     code += `  async select${pascalName}(value) {\n`;
-                    code += `    await this.page.selectOption(this.${this.toCamelCase(name)}, value);\n`;
+                    code += `    await this.${camelName}.selectOption(value);\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'checkbox') {
                     code += `  async check${pascalName}() {\n`;
-                    code += `    await this.page.check(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.check();\n`;
                     code += `  }\n\n`;
                     code += `  async uncheck${pascalName}() {\n`;
-                    code += `    await this.page.uncheck(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.uncheck();\n`;
                     code += `  }\n\n`;
                 } else if (data.type === 'radio') {
                     code += `  async select${pascalName}() {\n`;
-                    code += `    await this.page.check(this.${this.toCamelCase(name)});\n`;
+                    code += `    await this.${camelName}.check();\n`;
                     code += `  }\n\n`;
                 }
             });
@@ -207,6 +248,58 @@ class CodeGenerator {
 
         code += `}\n\nmodule.exports = ${this.toPascalCase(pageObject.name)};\n`;
         return code;
+    }
+
+    // Helper: Generate Playwright selector code based on type
+    getPlaywrightSelector(selectorObj) {
+        // Handle legacy string selectors
+        if (typeof selectorObj === 'string') {
+            return `this.page.locator('${selectorObj}')`;
+        }
+
+        // Handle new selector objects
+        const { type, value, details } = selectorObj;
+
+        switch (type) {
+            case 'data-testid':
+                // Extract just the value from [data-testid="value"]
+                // value is like [data-testid="login-btn"]
+                const testIdMatch = value.match(/\[.*?="(.*?)"\]/);
+                const testId = testIdMatch ? testIdMatch[1] : value;
+                return `this.page.getByTestId('${testId}')`;
+
+            case 'role':
+                // value is like role=button[name="Login"]
+                // details has { role: 'button', name: 'Login' }
+                if (details && details.role) {
+                    let options = '';
+                    if (details.name) {
+                        options = `, { name: '${details.name}' }`;
+                    }
+                    return `this.page.getByRole('${details.role}'${options})`;
+                }
+                return `this.page.locator('${value}')`; // Fallback
+
+            case 'text':
+                // value is like text=Login
+                // details has { text: 'Login' }
+                if (details && details.text) {
+                    return `this.page.getByText('${details.text}')`;
+                }
+                return `this.page.locator('${value}')`;
+
+            case 'name':
+                // value is like [name="email"]
+                // Playwright doesn't have getByName, so use locator
+                return `this.page.locator('${value}')`;
+
+            case 'id':
+            case 'class':
+            case 'css':
+            case 'xpath':
+            default:
+                return `this.page.locator('${value}')`;
+        }
     }
 
     // Selenium Java Page Object
@@ -343,20 +436,11 @@ class CodeGenerator {
                         return code;
                     }
 
-                    // Fallback to raw actions
-                    if (s.action === 'click') code += `await this.page.click('${s.selector}')`;
-                    else if (s.action === 'fill') code += `await this.page.fill('${s.selector}', '${s.value}')`;
-                    else if (s.action === 'navigate') code += `await this.page.goto('${s.value}')`;
-                    else if (s.action === 'select') code += `await this.page.selectOption('${s.selector}', '${s.value}')`;
-                    else if (s.action === 'screenshot') code += `await this.page.screenshot({ path: '${s.value || 'screenshot.png'}' })`;
-                    else code += `// ${s.action}`;
+                    // NO FALLBACK TO RAW LOCATORS - Element must be in Page Object
+                    code += `// ⚠️ ERROR: Element not found in Page Object for selector: ${s.selector}\n    `;
+                    code += `// Action: ${s.action}${s.value ? `, Value: ${s.value}` : ''}\n    `;
+                    code += `// Please add this element to your Page Object or re-scan elements`;
 
-                    // Assertions
-                    if (s.assertions && s.assertions.length > 0) {
-                        s.assertions.forEach(assertion => {
-                            code += `;\n    await expect(this.page.locator('${s.selector}')).${assertion.type}()`;
-                        });
-                    }
                     return code;
                 },
                 javascript: (s) => {
@@ -377,19 +461,10 @@ class CodeGenerator {
                         return code;
                     }
 
-                    if (s.action === 'click') code += `await this.page.click('${s.selector}')`;
-                    else if (s.action === 'fill') code += `await this.page.fill('${s.selector}', '${s.value}')`;
-                    else if (s.action === 'navigate') code += `await this.page.goto('${s.value}')`;
-                    else if (s.action === 'select') code += `await this.page.selectOption('${s.selector}', '${s.value}')`;
-                    else if (s.action === 'screenshot') code += `await this.page.screenshot({ path: '${s.value || 'screenshot.png'}' })`;
-                    else code += `// ${s.action}`;
-
-                    // Assertions
-                    if (s.assertions && s.assertions.length > 0) {
-                        s.assertions.forEach(assertion => {
-                            code += `;\n    await expect(this.page.locator('${s.selector}')).${assertion.type}()`;
-                        });
-                    }
+                    // NO FALLBACK TO RAW LOCATORS - Element must be in Page Object
+                    code += `// ⚠️ ERROR: Element not found in Page Object for selector: ${s.selector}\n    `;
+                    code += `// Action: ${s.action}${s.value ? `, Value: ${s.value}` : ''}\n    `;
+                    code += `// Please add this element to your Page Object or re-scan elements`;
                     return code;
                 },
                 python: (s) => {
@@ -408,6 +483,7 @@ class CodeGenerator {
                     if (s.action === 'navigate') return `await self.page.goto("${s.value}")`;
                     if (s.action === 'select') return `await self.page.select_option("${s.selector}", "${s.value}")`;
                     if (s.action === 'screenshot') return `await self.page.screenshot(path="${s.value || 'screenshot.png'}")`;
+                    if (s.action === 'assertion') return `await expect(self.page.locator("${s.selector}")).${this.toSnakeCase(s.type)}(${s.value ? `"${s.value}"` : ''})`;
                     return `# ${s.action}`;
                 },
                 java: (s) => {
@@ -418,6 +494,7 @@ class CodeGenerator {
                     if (s.action === 'navigate') return `page.navigate("${s.value}")`;
                     if (s.action === 'select') return `page.selectOption("${s.selector}", "${s.value}")`;
                     if (s.action === 'screenshot') return `// Screenshot not implemented`;
+                    if (s.action === 'assertion') return `assertThat(page.locator("${s.selector}")).${s.type === 'toBeVisible' ? 'isVisible()' : `hasValue("${s.value}")`}`;
                     return `// ${s.action}`;
                 }
             },
@@ -426,12 +503,20 @@ class CodeGenerator {
                     if (s.action === 'click') return `driver.findElement(By.cssSelector("${s.selector}")).click()`;
                     if (s.action === 'fill') return `driver.findElement(By.cssSelector("${s.selector}")).sendKeys(${s.value})`;
                     if (s.action === 'navigate') return `driver.get("${s.value}")`;
+                    if (s.action === 'assertion') {
+                        if (s.type === 'toBeVisible') return `Assert.assertTrue(driver.findElement(By.cssSelector("${s.selector}")).isDisplayed())`;
+                        if (s.type === 'toHaveValue') return `Assert.assertEquals(driver.findElement(By.cssSelector("${s.selector}")).getAttribute("value"), "${s.value}")`;
+                    }
                     return `// ${s.action}`;
                 },
                 python: (s) => {
                     if (s.action === 'click') return `self.driver.find_element(By.CSS_SELECTOR, "${s.selector}").click()`;
                     if (s.action === 'fill') return `self.driver.find_element(By.CSS_SELECTOR, "${s.selector}").send_keys(${s.value})`;
                     if (s.action === 'navigate') return `self.driver.get("${s.value}")`;
+                    if (s.action === 'assertion') {
+                        if (s.type === 'toBeVisible') return `assert self.driver.find_element(By.CSS_SELECTOR, "${s.selector}").is_displayed()`;
+                        if (s.type === 'toHaveValue') return `assert self.driver.find_element(By.CSS_SELECTOR, "${s.selector}").get_attribute("value") == "${s.value}"`;
+                    }
                     return `# ${s.action}`;
                 }
             }
@@ -465,17 +550,27 @@ class CodeGenerator {
                 code += `  testData.forEach(data => {\n`;
                 code += `    test('${testCase.name} with ' + JSON.stringify(data), async ({ page }) => {\n`;
 
-                // Instantiate all page objects
-                Object.values(pageObjects).forEach(page => {
-                    code += `      const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                // Determine which page objects are actually used
+                const usedPageNames = new Set();
+                testCase.steps.forEach(step => {
+                    if (step.pageName) {
+                        usedPageNames.add(step.pageName);
+                    }
+                });
+
+                // Only instantiate used page objects
+                usedPageNames.forEach(pageName => {
+                    const page = pageObjects[pageName];
+                    if (page) {
+                        code += `      const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                    }
                 });
 
                 testCase.steps.forEach(step => {
                     // Replace variables with data
                     let stepCode = this.generateStepCode(step, 'playwright', 'typescript', pageObjects);
-                    // Simple variable replacement logic
                     Object.keys(testCase.data[0]).forEach(key => {
-                        stepCode = stepCode.replace(new RegExp(`\\$\{${key}\\}`, 'g'), `\${data.${key}}`);
+                        stepCode = stepCode.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), `\${data.${key}}`);
                     });
                     code += `      ${stepCode};\n`;
                 });
@@ -485,9 +580,20 @@ class CodeGenerator {
                 // Normal test
                 code += `  test('${testCase.name}', async ({ page }) => {\n`;
 
-                // Instantiate all page objects
-                Object.values(pageObjects).forEach(page => {
-                    code += `    const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                // Determine which page objects are actually used
+                const usedPageNames = new Set();
+                testCase.steps.forEach(step => {
+                    if (step.pageName) {
+                        usedPageNames.add(step.pageName);
+                    }
+                });
+
+                // Only instantiate used page objects
+                usedPageNames.forEach(pageName => {
+                    const page = pageObjects[pageName];
+                    if (page) {
+                        code += `    const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                    }
                 });
 
                 testCase.steps.forEach(step => {
@@ -526,9 +632,20 @@ class CodeGenerator {
                 code += `  testData.forEach(data => {\n`;
                 code += `    test('${testCase.name} with ' + JSON.stringify(data), async ({ page }) => {\n`;
 
-                // Instantiate all page objects
-                Object.values(pageObjects).forEach(page => {
-                    code += `      const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                // Determine which page objects are actually used in this test case
+                const usedPageNames = new Set();
+                testCase.steps.forEach(step => {
+                    if (step.pageName) {
+                        usedPageNames.add(step.pageName);
+                    }
+                });
+
+                // Only instantiate page objects that are used
+                usedPageNames.forEach(pageName => {
+                    const page = pageObjects[pageName];
+                    if (page) {
+                        code += `      const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                    }
                 });
 
                 testCase.steps.forEach(step => {
@@ -536,7 +653,7 @@ class CodeGenerator {
                     let stepCode = this.generateStepCode(step, 'playwright', 'javascript', pageObjects);
                     // Simple variable replacement logic
                     Object.keys(testCase.data[0]).forEach(key => {
-                        stepCode = stepCode.replace(new RegExp(`\\$\{${key}\\}`, 'g'), `\${data.${key}}`);
+                        stepCode = stepCode.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), `\${data.${key}}`);
                     });
                     code += `      ${stepCode};\n`;
                 });
@@ -546,9 +663,20 @@ class CodeGenerator {
                 // Normal test
                 code += `  test('${testCase.name}', async ({ page }) => {\n`;
 
-                // Instantiate all page objects
-                Object.values(pageObjects).forEach(page => {
-                    code += `    const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                // Determine which page objects are actually used in this test case
+                const usedPageNames = new Set();
+                testCase.steps.forEach(step => {
+                    if (step.pageName) {
+                        usedPageNames.add(step.pageName);
+                    }
+                });
+
+                // Only instantiate page objects that are used
+                usedPageNames.forEach(pageName => {
+                    const page = pageObjects[pageName];
+                    if (page) {
+                        code += `    const ${this.toCamelCase(page.name)} = new ${this.toPascalCase(page.name)}(page);\n`;
+                    }
                 });
 
                 testCase.steps.forEach(step => {
@@ -568,8 +696,31 @@ class CodeGenerator {
             console.warn('toPascalCase received invalid input:', str);
             return 'UnknownPage';
         }
-        return str.replace(/(\w)(\w*)/g, (g0, g1, g2) => g1.toUpperCase() + g2.toLowerCase())
-            .replace(/\s+/g, '');
+
+        // Handle common compound words that should be capitalized separately
+        // e.g., "loginpage" -> "LoginPage", "userdetails" -> "UserDetails"
+        const commonWords = ['page', 'element', 'button', 'input', 'link', 'form', 'list', 'item', 'menu', 'modal', 'dialog', 'panel', 'section', 'header', 'footer', 'sidebar', 'content', 'container', 'wrapper'];
+
+        let result = str;
+
+        // First, try to split by common suffixes
+        commonWords.forEach(word => {
+            const regex = new RegExp(`(\\w+)(${word})$`, 'i');
+            if (regex.test(result)) {
+                result = result.replace(regex, (match, prefix, suffix) => {
+                    return prefix + suffix.charAt(0).toUpperCase() + suffix.slice(1);
+                });
+            }
+        });
+
+        // Then apply standard PascalCase conversion
+        return result
+            .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space before capitals
+            .replace(/[\s_-]+/g, ' ') // Replace separators with spaces
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join('')
+            .replace(/[^a-zA-Z0-9]/g, ''); // Remove invalid characters
     }
 
     toCamelCase(str) {
@@ -577,8 +728,21 @@ class CodeGenerator {
             console.warn('toCamelCase received invalid input:', str);
             return 'unknownPage';
         }
+
+        // First convert to PascalCase to normalize the string
         const pascal = this.toPascalCase(str);
-        return pascal.charAt(0).toLowerCase() + pascal.slice(1);
+
+        // Then convert first character to lowercase for camelCase
+        const camelCase = pascal.charAt(0).toLowerCase() + pascal.slice(1);
+
+        // Ensure the result is valid JavaScript identifier
+        // Remove any invalid characters and ensure it doesn't start with a number
+        let validName = camelCase.replace(/[^a-zA-Z0-9_$]/g, '');
+        if (/^[0-9]/.test(validName)) {
+            validName = '_' + validName;
+        }
+
+        return validName || 'unknownPage';
     }
 
     toSnakeCase(str) {

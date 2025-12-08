@@ -88,9 +88,21 @@ class PageObject {
         return `page_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
-    addElement(elementName, selector, elementType = 'button') {
+    addElement(elementName, selectorData, elementType = 'button') {
+        // Handle both string selectors (legacy) and new selector objects
+        let selectorObj = {};
+        if (typeof selectorData === 'string') {
+            selectorObj = {
+                value: selectorData,
+                type: 'legacy',
+                score: 0
+            };
+        } else {
+            selectorObj = selectorData;
+        }
+
         this.elements[elementName] = {
-            selector,
+            selector: selectorObj, // Store full object
             type: elementType,
             addedAt: Date.now()
         };

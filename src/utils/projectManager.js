@@ -194,19 +194,21 @@ class ProjectManager {
 
         const generator = new CodeGenerator(project.tool, project.language);
         const files = {};
+        const folders = generator.getFolderStructure();
 
         // Generate page objects
         Object.values(project.pages).forEach(page => {
             const ext = this.getFileExtension(project.language);
             const code = generator.generatePageObject(page);
+            const path = `${folders.pages}/${page.name}${ext}`;
 
             if (code && code.trim()) {
-                files[`pages/${page.name}${ext}`] = code;
-                console.log(`Generated page object: pages/${page.name}${ext}`);
+                files[path] = code;
+                console.log(`Generated page object: ${path}`);
             } else {
                 console.warn(`Empty code for page object: ${page.name}`);
                 // Add a placeholder comment so file isn't empty
-                files[`pages/${page.name}${ext}`] = `// Page Object: ${page.name}\n// No elements defined yet\n`;
+                files[path] = `// Page Object: ${page.name}\n// No elements defined yet\n`;
             }
         });
 
@@ -221,14 +223,15 @@ class ProjectManager {
             }
 
             const code = generator.generateTestSpec(test, page);
+            const path = `${folders.tests}/${test.name}${ext}`;
 
             if (code && code.trim()) {
-                files[`tests/${test.name}${ext}`] = code;
-                console.log(`Generated test spec: tests/${test.name}${ext}`);
+                files[path] = code;
+                console.log(`Generated test spec: ${path}`);
             } else {
                 console.warn(`Empty code for test spec: ${test.name}`);
                 // Add a placeholder comment so file isn't empty
-                files[`tests/${test.name}${ext}`] = `// Test Spec: ${test.name}\n// No test cases defined yet\n`;
+                files[path] = `// Test Spec: ${test.name}\n// No test cases defined yet\n`;
             }
         });
 
@@ -241,24 +244,25 @@ class ProjectManager {
         // Generate config files based on framework
         if (project.tool === 'playwright') {
             if (project.language === 'javascript') {
-                files['config/config.js'] = ConfigTemplates ? ConfigTemplates.getPlaywrightConfigJS() : '';
-                files['playwright.config.js'] = ConfigTemplates ? ConfigTemplates.getPlaywrightFrameworkConfig() : '';
+                files[`${folders.config}/config.js`] = ConfigTemplates ? ConfigTemplates.getPlaywrightConfigJS() : '';
+                files['playwright.config.js'] = ConfigTemplates ? ConfigTemplates.getPlaywrightFrameworkConfig() : ''; // Root config usually
                 files['package.json'] = ConfigTemplates ? ConfigTemplates.getPackageJson(project.name) : '';
             } else if (project.language === 'typescript') {
-                files['config/config.ts'] = ConfigTemplates ? ConfigTemplates.getPlaywrightConfigTS() : '';
+                files[`${folders.config}/config.ts`] = ConfigTemplates ? ConfigTemplates.getPlaywrightConfigTS() : '';
                 files['playwright.config.js'] = ConfigTemplates ? ConfigTemplates.getPlaywrightFrameworkConfig() : '';
                 files['package.json'] = ConfigTemplates ? ConfigTemplates.getPackageJson(project.name) : '';
             } else if (project.language === 'python') {
-                files['config/config.py'] = ConfigTemplates ? ConfigTemplates.getPythonConfig() : '';
+                files[`${folders.config}/config.py`] = ConfigTemplates ? ConfigTemplates.getPythonConfig() : '';
                 files['pytest.ini'] = ConfigTemplates ? ConfigTemplates.getPytestIni() : '';
                 files['requirements.txt'] = ConfigTemplates ? ConfigTemplates.getRequirementsTxt() : '';
             }
         } else if (project.tool === 'selenium') {
             if (project.language === 'python') {
-                files['config/config.py'] = ConfigTemplates ? ConfigTemplates.getPythonConfig() : '';
+                files[`${folders.config}/config.py`] = ConfigTemplates ? ConfigTemplates.getPythonConfig() : '';
                 files['pytest.ini'] = ConfigTemplates ? ConfigTemplates.getPytestIni() : '';
                 files['requirements.txt'] = ConfigTemplates ? ConfigTemplates.getRequirementsTxt() : '';
             } else if (project.language === 'java') {
+                // Java has specific standard structure
                 files['src/test/resources/config.properties'] = ConfigTemplates ? ConfigTemplates.getJavaConfigProperties() : '';
                 files['src/main/java/config/ConfigReader.java'] = ConfigTemplates ? ConfigTemplates.getJavaConfigReader() : '';
             }
@@ -266,11 +270,11 @@ class ProjectManager {
 
         // Generate helper/utility files
         if (project.language === 'javascript') {
-            files['utils/helpers.js'] = HelperTemplates ? HelperTemplates.getJSHelpers() : '';
+            files[`${folders.utils}/helpers.js`] = HelperTemplates ? HelperTemplates.getJSHelpers() : '';
         } else if (project.language === 'typescript') {
-            files['utils/helpers.ts'] = HelperTemplates ? HelperTemplates.getTSHelpers() : '';
+            files[`${folders.utils}/helpers.ts`] = HelperTemplates ? HelperTemplates.getTSHelpers() : '';
         } else if (project.language === 'python') {
-            files['utils/helpers.py'] = HelperTemplates ? HelperTemplates.getPythonHelpers() : '';
+            files[`${folders.utils}/helpers.py`] = HelperTemplates ? HelperTemplates.getPythonHelpers() : '';
         } else if (project.language === 'java') {
             files['src/main/java/utils/Helpers.java'] = HelperTemplates ? HelperTemplates.getJavaHelpers() : '';
         }
